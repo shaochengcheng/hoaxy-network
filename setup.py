@@ -15,6 +15,9 @@ setup(
     maintainer='Chengcheng Shao',
     maintainer_email='shaoc@indiana.edu',
     license='GPLv3',
+    entry_points={
+        'console_scripts': ['hnetwork = hnetwork.cmdline:main']
+    },
     packages=find_packages(exclude=('tests', 'tests.*')),
     include_package_data=True,
     zip_safe=True,
@@ -30,5 +33,7 @@ setup(
     install_requires=[
         'networkx',
         'pandas',
+        'docopt>=0.6.2',
+        'schema',
     ],
 )
