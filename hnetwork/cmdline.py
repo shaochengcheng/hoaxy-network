@@ -34,7 +34,7 @@ def main(argv=None):
     """The main entry point of command line interface."""
     args_schema = Schema({
         object: object
-    })
+        })
     args = docopt(__doc__, version=VERSION, argv=argv or sys.argv[1:])
     try:
         args = args_schema.validate(args)
