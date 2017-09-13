@@ -25,8 +25,7 @@ def to_gml(efn, cfn, gml_fn):
         target='toId',
         edge_attr=True,
         create_using=nx.DiGraph())
-    nx.set_node_attributes(
-         g, values=cdf.label.to_dict(), name='communityLabel')
+    nx.set_node_attributes(g, values=cdf.label.to_dict(), name='communityLabel')
     nx.set_node_attributes(g, values=cdf.uid.to_dict(), name='screenName')
     g = nx.convert_node_labels_to_integers(g)
     nx.write_gml(g, gml_fn)

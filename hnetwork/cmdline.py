@@ -32,9 +32,7 @@ logger = logging.getLogger()
 
 def main(argv=None):
     """The main entry point of command line interface."""
-    args_schema = Schema({
-        object: object
-        })
+    args_schema = Schema({object: object})
     args = docopt(__doc__, version=VERSION, argv=argv or sys.argv[1:])
     try:
         args = args_schema.validate(args)
@@ -43,8 +41,10 @@ def main(argv=None):
     # set logging level
     logging.basicConfig(stream=sys.stdout, level='DEBUG')
     if args['viscomm'] is True:
-        layouts = ['sfdp_layout', 'fruchterman_reingold_layout', 'arf_layout',
-                'random_layout']
+        layouts = [
+            'sfdp_layout', 'fruchterman_reingold_layout', 'arf_layout',
+            'random_layout'
+        ]
         gml_fn = abspath(args['<in_gml_file>'])
         gml_dir, gml_basename = split(gml_fn)
         pdf_dir = args['<out_pdf_dir>']
