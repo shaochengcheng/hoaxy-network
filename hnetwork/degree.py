@@ -17,12 +17,21 @@ logger = logging.getLogger(__name__)
 def build_network(fn):
     fn = get_data_file(fn)
     df = pd.read_csv(fn)
-    return nx.from_pandas_dataframe(
+    from_names = df[['from_raw_id', 'from_screen_name']].copy()
+    from_names.columns = ['raw_id', 'screen_name']
+    to_names = df[['to_raw_id', 'to_screen_name']].copy()
+    to_names.columns = ['raw_id', 'screen_name']
+    names = pd.concat([from_names, to_names], ignore_index=True)
+    names = names.drop_duplicates()
+    names = names.set_index('raw_id')['screen_name']
+    g = nx.from_pandas_dataframe(
         df,
         source='from_raw_id',
         target='to_raw_id',
         edge_attr='weight',
         create_using=nx.DiGraph())
+    nx.set_node_attributes(g, name='screen_name', values=names.to_dict())
+    return g
 
 
 def all_degrees(g):
@@ -31,6 +40,26 @@ def all_degrees(g):
         ko=pd.Series(g.out_degree(), name='ko'),
         si=pd.Series(g.in_degree(weight='weight'), name='si'),
         so=pd.Series(g.out_degree(weight='weight'), name='so'))
+
+
+def deg_hub_stat(g, deg, fn, top=10):
+    fn = get_data_file(fn)
+    names = pd.Series(nx.get_node_attributes(g, name='screen_name'))
+    dfs = []
+    for k, v in deg.items():
+        deg[k] = v.sort_values(ascending=False)
+        hub = deg[k].iloc[:top].copy()
+        hub_sn = names.loc[hub.index]
+        hub_df = pd.concat([hub, hub_sn], axis=1)
+        hub_df = hub_df.reset_index(drop=False)
+        k_raw_id = k + '_raw_id'
+        k_value = k + '_value'
+        k_screen_name = k + '_screen_name'
+        hub_df.columns = [k_raw_id, k_value, k_screen_name]
+        dfs.append(hub_df)
+    df = pd.concat(dfs, axis=1)
+    df.to_csv(fn, index=False)
+    print(df)
 
 
 def plot_deg_dist(deg1, deg2, figsize=(8, 6)):
@@ -146,37 +175,51 @@ def plot_deg_heatmap(deg1, deg2, base=2, figsize=(6, 5)):
     # axarr[3].xaxis.set_major_locator(LogLocator(base=10))
     # axarr[3].tick_params(axis='x', which='minor', length=4, color='r')
     plt.colorbar(im, ax=axarr[4], orientation='vertical', fraction=0.8)
-    fig.tight_layout()
+    # fig.tight_layout()
 
 
-def mention_deg_dist(fn1='network_mention.20170829.fn.csv',
-                     fn2='network_mention.20170829.fc.csv',
+def mention_deg_dist(fn1='mention.20170921.fn.csv',
+                     fn2='mention.20170921.fc.csv',
                      ofn='mention-degree-dist.pdf',
+                     ofn1='mention.20170921.hub.fn.csv',
+                     ofn2='mention.20170921.hub.fc.csv',
+                     top=10,
                      figsize=(8, 6)):
     ofn = get_out_file(ofn)
     g1 = build_network(fn1)
     g2 = build_network(fn2)
     deg1 = all_degrees(g1)
     deg2 = all_degrees(g2)
+    print('Mention of fake news:\n')
+    deg_hub_stat(g1, deg1, ofn1, top=top)
+    print('Mention of fact checking\n')
+    deg_hub_stat(g2, deg2, ofn2, top=top)
     plot_deg_dist(deg1, deg2, figsize)
     plt.savefig(ofn)
 
 
-def retweet_deg_dist(fn1='network_retweet.20170829.fn.csv',
-                     fn2='network_retweet.20170829.fc.csv',
+def retweet_deg_dist(fn1='retweet.20170921.fn.csv',
+                     fn2='retweet.20170921.fc.csv',
                      ofn='retweet-degree-dist.pdf',
+                     ofn1='retweet.20170921.hub.fn.csv',
+                     ofn2='retweet.20170921.hub.fc.csv',
+                     top=10,
                      figsize=(8, 6)):
     ofn = get_out_file(ofn)
     g1 = build_network(fn1)
     g2 = build_network(fn2)
     deg1 = all_degrees(g1)
     deg2 = all_degrees(g2)
+    print('Retweet of fake news:\n')
+    deg_hub_stat(g1, deg1, ofn1, top=top)
+    print('Retweet of fact checking\n')
+    deg_hub_stat(g2, deg2, ofn2, top=top)
     plot_deg_dist(deg1, deg2, figsize)
     plt.savefig(ofn)
 
 
-def mention_deg_heatmap(fn1='network_mention.20170829.fn.csv',
-                        fn2='network_mention.20170829.fc.csv',
+def mention_deg_heatmap(fn1='mention.20170921.fn.csv',
+                        fn2='mention.20170921.fc.csv',
                         ofn='mention-degree-heatmap.pdf',
                         base=2,
                         figsize=(6, 5)):
@@ -189,8 +232,8 @@ def mention_deg_heatmap(fn1='network_mention.20170829.fn.csv',
     plt.savefig(ofn)
 
 
-def retweet_deg_heatmap(fn1='network_retweet.20170829.fn.csv',
-                        fn2='network_retweet.20170829.fc.csv',
+def retweet_deg_heatmap(fn1='retweet.20170921.fn.csv',
+                        fn2='retweet.20170921.fc.csv',
                         ofn='retweet-degree-heatmap.pdf',
                         base=2,
                         figsize=(6, 5)):

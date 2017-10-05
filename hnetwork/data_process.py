@@ -20,6 +20,12 @@ def get_data_file(fn):
 def get_out_file(fn):
     return join(PLOTS_DIR, fn)
 
+
+def get_absprefix(abspath):
+    root, ext = splitext(abspath)
+    return root
+
+
 def nplog(a, base):
     return np.log(a)/np.log(base)
 
@@ -56,17 +62,26 @@ def decompose_network(fn):
         df = df.drop('from_indexed_id', axis=1)
     if 'to_indexed_id' in df.columns:
         df = df.drop('to_indexed_id', axis=1)
-    df['cweight'] = (df.weight * df.site_type).apply(round)
-    df['fweight'] = df.weight - df.cweight
     fn_df = df.loc[df.cweight > 0].copy()
-    fn_df = fn_df.drop(
-        ['weight', 'fweight', 'site_type'], axis=1).rename(
+    fn_df = fn_df.drop('fweight', axis=1).rename(
             columns=dict(cweight='weight'))
     ff_df = df.loc[df.fweight > 0].copy()
-    ff_df = ff_df.drop(
-        ['weight', 'cweight', 'site_type'], axis=1).rename(
+    ff_df = ff_df.drop('cweight', axis=1).rename(
             columns=dict(fweight='weight'))
     logger.info('Saving fake news network to %r ...', fn_fn)
-    fn_df.to_csv(fn_fn)
+    fn_df.to_csv(fn_fn, index=False)
     logger.info('Saving fact checking network to %r ...', ff_fn)
-    ff_df.to_csv(ff_fn)
+    ff_df.to_csv(ff_fn, index=False)
+
+
+def index_edge_list(ifn, ofn, ikwargs=dict(), okwargs=dict(index=False)):
+    df = pd.read_csv(ifn, **ikwargs)
+    s = pd.concat((df[df.columns[0]], df[df.columns[1]]))
+    s = s.drop_duplicates()
+    s = s.sort_values().reset_index(drop=True)
+    s = {v:k for k, v in s.to_dict().items()}
+    df['from_idx'] = df[df.columns[0]].apply(s.get)
+    df['to_idx'] = df[df.columns[1]].apply(s.get)
+    df = df.sort_values(['from_idx', 'to_idx'])
+    df[['from_idx', 'to_idx']].to_csv(ofn, **okwargs)
+
