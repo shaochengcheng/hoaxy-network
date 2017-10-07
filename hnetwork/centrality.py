@@ -3,6 +3,8 @@ import logging
 import graph_tool.all as gt
 import networkx as nx
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 
 logger = logging.getLogger(__name__)
@@ -51,12 +53,24 @@ def centralities(g):
     df.to_csv('centralities.csv')
 
 
-def v_percolate(g, ofn, vertices):
+def distance_histogram(g):
+    import pdb;pdb.set_trace()
+    counts, bins = gt.distance_histogram(g)
+    df = pd.DataFrame(dict(counts=counts))
+    df.to_csv('distance_histogram.csv', index=False)
+
+
+def v_percolate(g, vertices, ofn):
     vertices = list(vertices)
     sizes, comp = gt.vertex_percolation(g, vertices)
     np.random.shuffle(vertices)
     sizes2, comp = gt.vertex_percolation(g, vertices)
-    plt.figure()
-    plot(sizes, label='Targeting')
-    plot(sizes2, lable='Random')
+    fig, ax = plt.subplots()
+    ax.plot(sizes, label='Targeting')
+    ax.plot(sizes2, label='Random')
+    ax.set_xlabel("Vertices Remaining")
+    ax.set_ylabel("Size of largest component")
+    plt.legend()
+    plt.tight_layout()
     plt.savefig(ofn)
+
