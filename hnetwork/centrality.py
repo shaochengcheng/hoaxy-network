@@ -3,6 +3,8 @@ import logging
 import graph_tool.all as gt
 import networkx as nx
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 
 logger = logging.getLogger(__name__)
@@ -19,25 +21,37 @@ def load_graph(fn):
                                   ecols=(2,3),
                                   )
 
-def v_betweenness(g, fn):
-    vp, ep = gt.betweenness(g)
-    vb = {g.vertex(i):vp[g.vertex(i) for i in range(g.num_vertices())]}
-    s = pd.Series(vb)
-    s.name = 'v_betweenness'
-    s.index.name = 'raw_id'
-    s = s.sort_values(ascending=False)
-    s.to_csv(fn)
+def v_betweenness(g):
+    vb, eb = gt.betweenness(g)
+    vdf = pd.DataFrame((g.vp['name'][i], vb[i])
+                       for i in range(g.num_vertices()))
+    vdf.index.name = 'v_idx'
+    vdf.columns = ['screen_name', 'betweenness']
+    edf = pd.DataFrame(dict(betweenness=eb.a))
+    edf.index.name = 'e_idx'
+    edf.columns = ['betweenness']
+    vdf.to_csv('v_betweenness.csv')
+    edf.to_csv('e_betweenness.csv')
 
 
-def v_percolate(g, ofn, vertices):
+def distance_histogram(g):
+    import pdb;pdb.set_trace()
+    counts, bins = gt.distance_histogram(g)
+    df = pd.DataFrame(dict(counts=counts))
+    df.to_csv('distance_histogram.csv', index=False)
+
+
+def v_percolate(g, vertices, ofn):
     vertices = list(vertices)
     sizes, comp = gt.vertex_percolation(g, vertices)
     np.random.shuffle(vertices)
     sizes2, comp = gt.vertex_percolation(g, vertices)
-    plt.figure()
-    plot(sizes, label='Targeting')
-    plot(sizes2, lable='Random')
+    fig, ax = plt.subplots()
+    ax.plot(sizes, label='Targeting')
+    ax.plot(sizes2, label='Random')
+    ax.set_xlabel("Vertices Remaining")
+    ax.set_ylabel("Size of largest component")
+    plt.legend()
+    plt.tight_layout()
     plt.savefig(ofn)
-
-
 
