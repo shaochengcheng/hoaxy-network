@@ -144,5 +144,73 @@ def k_core_evolution(fn, ofn=None, freq='D'):
 
 
 def plot_kcore_timeline(fn='k_core_evolution.csv'):
-    df = pd.read_csv(fn)
+    df = pd.read_csv(fn, parse_dates=['timeline'])
+    fig, ax = plt.subplots()
+    ax2 = ax.twinx()
+    ax2.plot(df.timeline.values, df.mcore_k, label='K of Main Core', color='b')
+    ax.plot(df.timeline.values, df.mcore_num, label='Number of Main core', color='r')
+    plt.tight_layout()
+    plt.savefig('k-core.pdf')
+
+
+def changes_of_cores(fn1='k_core_evolution.csv', fn2='vertex_map.csv'):
+    df1 = pd.read_csv(fn1, parse_dates=['timeline'])
+    df2 = pd.read_csv(fn2, header=None)
+    df2.columns = ['raw_id', 'v_idx']
+    df2 = df2.set_index('v_idx')
+    df1['mcore_idx'] = df1.mcore_idx.apply(eval).apply(set)
+    df1 = df1.set_index('timeline')
+    s1 = df1.loc['2016-11-07', 'mcore_idx'].iloc[0]
+    s2 = set(s1)
+    for ts, s0 in df1.mcore_idx.loc['2016-11-08':].iteritems():
+        s1 &= s0
+        s2 |= s0
+    unchanged = df2.loc[list(s1)]
+    unions = df2.loc[list(s2)]
+    unchanged.to_csv('unchanged.csv')
+    unions.to_csv('unions.csv')
+    logger.info('Number of unchanged is %s', len(unchanged))
+    logger.info('Number of union is %s', len(unions))
+
+
+def main_core(df):
+    w = df.groupby(['from_raw_id', 'to_raw_id']).size()
+    g = gt.Graph()
+    v_raw_ids = g.add_edge_list(w.index.values, hashed=True).a.copy()
+    kcores = gt.kcore_decomposition(g).a.copy()
+    s = pd.Series(kcores)
+    return v_raw_ids[s.loc[s==s.max()].index]
+
+
+def rolling_k_core(fn='retweet.201710.claim.raw.csv'):
+    df = pd.read_csv(fn, parse_dates=['tweet_created_at'],
+                     usecols=[2, 3, 4])
+    df = df.set_index('tweet_created_at')
+    # remove self-loop
+    df = df.loc[df.from_raw_id != df.to_raw_id]
+    df1 = df.loc[:'2016-11-07']
+    df2 = df.loc['2016-11-08':'2017-04-07']
+    df2 = df.loc['2017-04-08':]
+    logger.info('Dataset 1: rows %s, days %s',
+                len(df1), df1.index.max()-df1.index.min())
+    logger.info('Dataset 2: rows %s, days %s',
+                len(df2), df2.index.max()-df2.index.min())
+    logger.info('Dataset 3: rows %s, days %s',
+                len(df3), df3.index.max()-df3.index.min())
+    w1 = df1.groupby(['from_raw_id', 'to_raw_id']).size()
+    w2 = df2.groupby(['from_raw_id', 'to_raw_id']).size()
+    w3 = df3.groupby(['from_raw_id', 'to_raw_id']).size()
+    g1 = gt.Graph()
+    g2 = gt.Graph()
+    g3 = gt.Graph()
+    g1.add_edge_list(w1.index.values, hashed=True)
+    g2.add_edge_list(w2.index.values, hashed=True)
+    g3.add_edge_list(w3.index.values, hashed=True)
+    s1 = pd.Series(gt.kcore_decomposition(g1).a.copy())
+    s2 = pd.Series(gt.kcore_decomposition(g2).a.copy())
+    s2 = pd.Series(gt.kcore_decomposition(g3).a.copy())
+
+
+
+
 
