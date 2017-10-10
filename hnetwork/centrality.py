@@ -76,25 +76,57 @@ def v_percolate(g, vertices, ofn):
     plt.savefig(ofn)
 
 
-def k_core_evolution(fn, freq='D'):
+def k_core_evolution(fn, ofn=None, freq='D'):
+    if ofn is None:
+        ofn = 'k_core_evolution.csv'
     # load only necessary columns
     df = pd.read_csv(fn, parse_dates=['tweet_created_at'],
                      usecols=[2, 3, 4])
     df = df.set_index('tweet_created_at')
     # remove self-loop
     df = df.loc[df.from_raw_id != df.to_raw_id]
-    ts = pd.date_range(start=df.index.min(), end=df.index.max(), freq=freq)
+    df['row_id'] = np.arange(len(df))
+    df['flag'] = False
+    flag_rows = df.row_id.groupby(pd.Grouper(freq=freq)).last()
+    flag_rows = flag_rows.loc[flag_rows.notnull()].astype('int')
+    df.loc[df.row_id.isin(flag_rows.values), 'flag'] = True
+    df = df.iloc[:100000]
+
+    v_map = dict()
+    e_set = set()
+    v_counter = -1
+    g = gt.Graph()
     mcore_k = []
     mcore_num = []
-    for d in ts[1:]:
-        g = gt.Graph()
-        ddf = df[:d].drop_duplicates()
-        g.add_edge_list(ddf.values, hashed=True)
-        gt.remove_parallel_edges(g)
-        mcore = pd.Series(gt.kcore_decomposition(g).a.copy()).\
-            value_counts().sort_index(ascending=False)
-        mcore_k.append(mcore.index[0])
-        mcore_num.append(mcore.iloc[0])
+    ts = []
+    for created_at, from_raw_id, to_raw_id, flag\
+        in df[['from_raw_id', 'to_raw_id', 'flag']].itertuples():
+        e = (from_raw_id, to_raw_id)
+        if e not in e_set:
+            if from_raw_id not in v_map:
+                v_counter += 1
+                v_map[from_raw_id] = v_counter
+            if to_raw_id not in v_map:
+                v_counter += 1
+                v_map[to_raw_id] = v_counter
+            source = v_map.get(from_raw_id)
+            target = v_map.get(to_raw_id)
+            g.add_edge(source, target, add_missing=True)
+            e_set.add(e)
+        if flag is True:
+            ts.append(created_at)
+            mcore = pd.Series(gt.kcore_decomposition(g).a.copy()).\
+                value_counts().sort_index(ascending=False)
+            mcore_k.append(mcore.index[0])
+            mcore_num.append(mcore.iloc[0])
+            logger.info('Main core at %s: k=%s, num=%s',
+                        created_at, mcore.index[0], mcore.iloc[0])
+    cdf = pd.DataFrame(dict(
+        timeline=ts,
+        mcore_k=mcore_k,
+        mcore_num=mcore_num
+    ))
+    cdf.to_csv(ofn, index=False)
 
 
 
