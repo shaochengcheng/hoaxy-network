@@ -10,6 +10,13 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
+def weight_edge_list(fn, ofn):
+    df = pd.read_csv(fn)
+    df = df.loc[df.from_raw_id != df.to_raw_id]
+    weight = df.groupby(['from_raw_id', 'to_raw_id']).size().rename('weight')
+    weight.to_csv(ofn, index=True)
+
+
 def load_graph(fn):
     return gt.load_graph_from_csv(fn,
                                   directed=True,
@@ -86,11 +93,10 @@ def k_core_evolution(fn, ofn=None, freq='D'):
     # remove self-loop
     df = df.loc[df.from_raw_id != df.to_raw_id]
     df['row_id'] = np.arange(len(df))
-    df['flag'] = False
-    flag_rows = df.row_id.groupby(pd.Grouper(freq=freq)).last()
-    flag_rows = flag_rows.loc[flag_rows.notnull()].astype('int')
-    df.loc[df.row_id.isin(flag_rows.values), 'flag'] = True
-    df = df.iloc[:100000]
+    df['gpf'] = False
+    gpf_rows = df.row_id.groupby(pd.Grouper(freq=freq)).last()
+    gpf_rows = gpf_rows.loc[gpf_rows.notnull()].astype('int')
+    df.loc[df.row_id.isin(gpf_rows.values), 'gpf'] = True
 
     v_map = dict()
     e_set = set()
@@ -98,9 +104,10 @@ def k_core_evolution(fn, ofn=None, freq='D'):
     g = gt.Graph()
     mcore_k = []
     mcore_num = []
+    mcore_idx = []
     ts = []
-    for created_at, from_raw_id, to_raw_id, flag\
-        in df[['from_raw_id', 'to_raw_id', 'flag']].itertuples():
+    for created_at, from_raw_id, to_raw_id, gpf\
+        in df[['from_raw_id', 'to_raw_id', 'gpf']].itertuples():
         e = (from_raw_id, to_raw_id)
         if e not in e_set:
             if from_raw_id not in v_map:
@@ -113,20 +120,29 @@ def k_core_evolution(fn, ofn=None, freq='D'):
             target = v_map.get(to_raw_id)
             g.add_edge(source, target, add_missing=True)
             e_set.add(e)
-        if flag is True:
+        if gpf:
             ts.append(created_at)
-            mcore = pd.Series(gt.kcore_decomposition(g).a.copy()).\
-                value_counts().sort_index(ascending=False)
-            mcore_k.append(mcore.index[0])
-            mcore_num.append(mcore.iloc[0])
+            kcore = pd.Series(gt.kcore_decomposition(g).a.copy())
+            mcore = kcore.value_counts().sort_index(ascending=False)
+            mk = mcore.index[0]
+            mn = mcore.iloc[0]
+            mcore_k.append(mk)
+            mcore_num.append(mn)
+            mcore_idx.append(kcore.loc[kcore == mk].index.tolist())
+            logger.info(g)
             logger.info('Main core at %s: k=%s, num=%s',
-                        created_at, mcore.index[0], mcore.iloc[0])
+                        created_at, mk, mn)
     cdf = pd.DataFrame(dict(
         timeline=ts,
         mcore_k=mcore_k,
-        mcore_num=mcore_num
+        mcore_num=mcore_num,
+        mcore_idx=mcore_idx,
     ))
     cdf.to_csv(ofn, index=False)
+    v_series = pd.Series(v_map)
+    v_series.to_csv('vertex_map.csv')
 
 
+def plot_kcore_timeline(fn='k_core_evolution.csv'):
+    df = pd.read_csv(fn)
 
