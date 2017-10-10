@@ -23,6 +23,7 @@ def load_graph(fn):
 
 
 def centralities(g):
+    import pdb; pdb.set_trace()  # XXX BREAKPOINT
     # degrees
     # in degree
     ki = g.degree_property_map('in')
@@ -37,7 +38,7 @@ def centralities(g):
     # betweetnness
     vb, eb = gt.betweenness(g)
     # eigenvector
-    ev = gt.eigenvector(g)
+    e, ev = gt.eigenvector(g)
     # screen_name
     sn = [g.vp['name'][v] for v in g.vertices()]
     df = pd.DataFrame(dict(
@@ -73,4 +74,27 @@ def v_percolate(g, vertices, ofn):
     plt.legend()
     plt.tight_layout()
     plt.savefig(ofn)
+
+
+def k_core_evolution(fn, freq='D'):
+    # load only necessary columns
+    df = pd.read_csv(fn, parse_dates=['tweet_created_at'],
+                     usecols=[2, 3, 4])
+    df = df.set_index('tweet_created_at')
+    # remove self-loop
+    df = df.loc[df.from_raw_id != df.to_raw_id]
+    ts = pd.date_range(start=df.index.min(), end=df.index.max(), freq=freq)
+    mcore_k = []
+    mcore_num = []
+    for d in ts[1:]:
+        g = gt.Graph()
+        ddf = df[:d].drop_duplicates()
+        g.add_edge_list(ddf.values, hashed=True)
+        gt.remove_parallel_edges(g)
+        mcore = pd.Series(gt.kcore_decomposition(g).a.copy()).\
+            value_counts().sort_index(ascending=False)
+        mcore_k.append(mcore.index[0])
+        mcore_num.append(mcore.iloc[0])
+
+
 
