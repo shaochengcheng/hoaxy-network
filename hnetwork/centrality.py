@@ -1,7 +1,6 @@
 import logging
 
 import graph_tool.all as gt
-import networkx as nx
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -25,12 +24,26 @@ def load_graph(fn):
                                   string_vals=True,
                                   hashed=True,
                                   skip_first=True,
-                                  ecols=(2,3),
+                                  ecols=(2, 3),
                                   )
 
 
-def centralities(g):
-    import pdb; pdb.set_trace()  # XXX BREAKPOINT
+def prepare_network_from_raw(fn):
+    df = pd.read_csv(fn, usecols=[3, 4])
+    df = df.loc[df.from_raw_id != df.to_raw_id]
+    w = df.groupby(['from_raw_id', 'to_raw_id']).size(
+    ).rename('weight').reset_index(drop=False)
+    g = gt.Graph()
+    v_raw_ids = g.add_edge_list(w[['from_raw_id', 'to_raw_id']].values,
+                                hashed=True)
+    g.vp['raw_id'] = v_raw_ids
+    e_weight = g.new_edge_property("double")
+    e_weight.a = w['weight'].values
+    g.ep['weight'] = e_weight
+    return g
+
+
+def centralities(g, user_map):
     # degrees
     # in degree
     ki = g.degree_property_map('in')
@@ -47,9 +60,9 @@ def centralities(g):
     # eigenvector
     e, ev = gt.eigenvector(g)
     # screen_name
-    sn = [g.vp['name'][v] for v in g.vertices()]
+    screen_name = user_map.loc[g.vp['raw_id'].a.copy()].values
     df = pd.DataFrame(dict(
-        screen_name=sn,
+        screen_name=screen_name,
         in_degree=ki.a,
         out_degree=ko.a,
         weighted_in_degree=si.a,
@@ -58,11 +71,34 @@ def centralities(g):
         betweenness=vb.a,
         eigenvector=ev.a
     ))
-    df.to_csv('centralities.csv')
+    df.to_csv('centralities.raw.csv')
+    df = df.sort_values('in_degree', ascending=False)
+    ranked_ki = df.screen_name.values.copy()
+    df = df.sort_values('out_degree', ascending=False)
+    ranked_ko = df.screen_name.values.copy()
+    df = df.sort_values('weighted_in_degree', ascending=False)
+    ranked_si = df.screen_name.values.copy()
+    df = df.sort_values('weighted_out_degree', ascending=False)
+    ranked_so = df.screen_name.values.copy()
+    df = df.sort_values('page_rank', ascending=False)
+    ranked_pr = df.screen_name.values.copy()
+    df = df.sort_values('betweenness', ascending=False)
+    ranked_bt = df.screen_name.values.copy()
+    df = df.sort_values('eigenvector', ascending=False)
+    ranked_ev = df.screen_name.values.copy()
+    ranked_df = pd.DataFrame(dict(
+        in_degree=ranked_ki,
+        out_degree=ranked_ko,
+        weighted_in_degree=ranked_si,
+        weighted_out_degree=ranked_so,
+        page_rank=ranked_pr,
+        betweenness=ranked_bt,
+        eigenvector=ranked_ev
+    ))
+    ranked_df.to_csv('centralities.ranked.csv', index=False)
 
 
 def distance_histogram(g):
-    import pdb;pdb.set_trace()
     counts, bins = gt.distance_histogram(g)
     df = pd.DataFrame(dict(counts=counts))
     df.to_csv('distance_histogram.csv', index=False)
@@ -148,7 +184,8 @@ def plot_kcore_timeline(fn='k_core_evolution.csv'):
     fig, ax = plt.subplots()
     ax2 = ax.twinx()
     ax2.plot(df.timeline.values, df.mcore_k, label='K of Main Core', color='b')
-    ax.plot(df.timeline.values, df.mcore_num, label='Number of Main core', color='r')
+    ax.plot(df.timeline.values, df.mcore_num, label='Number of Main core',
+            color='r')
     plt.tight_layout()
     plt.savefig('k-core.pdf')
 
@@ -165,18 +202,20 @@ def changes_of_cores(fn1='k_core_evolution.csv', fn2='vertex_map.csv'):
     for ts, s0 in df1.mcore_idx.loc['2016-11-08':].iteritems():
         s1 &= s0
         s2 |= s0
-    unchanged = df2.loc[list(s1)]
-    unions = df2.loc[list(s2)]
-    unchanged.to_csv('unchanged.csv')
-    unions.to_csv('unions.csv')
-    logger.info('Number of unchanged is %s', len(unchanged))
-    logger.info('Number of union is %s', len(unions))
+        unchanged = df2.loc[list(s1)]
+        unions = df2.loc[list(s2)]
+        unchanged.to_csv('k_core.daily.intersection.csv')
+        unions.to_csv('k_core.daily.union.csv')
+        logger.info('Number of unchanged is %s', len(unchanged))
+        logger.info('Number of union is %s', len(unions))
 
 
 def main_core(df):
-    w = df.groupby(['from_raw_id', 'to_raw_id']).size()
+    w = df.groupby(['from_raw_id', 'to_raw_id']).size().\
+        rename('weight').reset_index(drop=False)
     g = gt.Graph()
-    v_raw_ids = g.add_edge_list(w.index.values, hashed=True).a.copy()
+    v_raw_ids = g.add_edge_list(w[['from_raw_id', 'to_raw_id']].values,
+                                hashed=True).a.copy()
     kcores = gt.kcore_decomposition(g).a.copy()
     s = pd.Series(kcores)
     return v_raw_ids[s.loc[s==s.max()].index]
@@ -190,27 +229,20 @@ def rolling_k_core(fn='retweet.201710.claim.raw.csv'):
     df = df.loc[df.from_raw_id != df.to_raw_id]
     df1 = df.loc[:'2016-11-07']
     df2 = df.loc['2016-11-08':'2017-04-07']
-    df2 = df.loc['2017-04-08':]
+    df3 = df.loc['2017-04-08':]
     logger.info('Dataset 1: rows %s, days %s',
                 len(df1), df1.index.max()-df1.index.min())
     logger.info('Dataset 2: rows %s, days %s',
                 len(df2), df2.index.max()-df2.index.min())
     logger.info('Dataset 3: rows %s, days %s',
                 len(df3), df3.index.max()-df3.index.min())
-    w1 = df1.groupby(['from_raw_id', 'to_raw_id']).size()
-    w2 = df2.groupby(['from_raw_id', 'to_raw_id']).size()
-    w3 = df3.groupby(['from_raw_id', 'to_raw_id']).size()
-    g1 = gt.Graph()
-    g2 = gt.Graph()
-    g3 = gt.Graph()
-    g1.add_edge_list(w1.index.values, hashed=True)
-    g2.add_edge_list(w2.index.values, hashed=True)
-    g3.add_edge_list(w3.index.values, hashed=True)
-    s1 = pd.Series(gt.kcore_decomposition(g1).a.copy())
-    s2 = pd.Series(gt.kcore_decomposition(g2).a.copy())
-    s2 = pd.Series(gt.kcore_decomposition(g3).a.copy())
-
-
-
-
+    s1 = set(main_core(df1))
+    s2 = set(main_core(df2))
+    s3 = set(main_core(df3))
+    unchanged = pd.DataFrame(list(s1 & s2 & s3), columns=['user_raw_id'])
+    unions = pd.DataFrame(list(s1 | s2 | s3), columns=['user_raw_id'])
+    logger.info('Intersection: %s', len(unchanged))
+    logger.info('Union: %s', len(unions))
+    unchanged.to_csv('k_core.3.intersection.csv', index=False)
+    unions.to_csv('k_core.3.union.csv', index=False)
 
