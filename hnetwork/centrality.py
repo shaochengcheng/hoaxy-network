@@ -1,10 +1,9 @@
 import logging
 
-import graph_tool.all as gt
+# import graph_tool.all as gt
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
 
 logger = logging.getLogger(__name__)
 
@@ -17,25 +16,26 @@ def weight_edge_list(fn, ofn):
 
 
 def load_graph(fn):
-    return gt.load_graph_from_csv(fn,
-                                  directed=True,
-                                  eprop_types=('string', 'string', 'double'),
-                                  eprop_names=('fromId', 'toId', 'weight'),
-                                  string_vals=True,
-                                  hashed=True,
-                                  skip_first=True,
-                                  ecols=(2, 3),
-                                  )
+    return gt.load_graph_from_csv(
+        fn,
+        directed=True,
+        eprop_types=('string', 'string', 'double'),
+        eprop_names=('fromId', 'toId', 'weight'),
+        string_vals=True,
+        hashed=True,
+        skip_first=True,
+        ecols=(2, 3),)
 
 
 def prepare_network_from_raw(fn):
     df = pd.read_csv(fn, usecols=[3, 4])
     df = df.loc[df.from_raw_id != df.to_raw_id]
-    w = df.groupby(['from_raw_id', 'to_raw_id']).size(
-    ).rename('weight').reset_index(drop=False)
+    w = df.groupby(['from_raw_id',
+                    'to_raw_id']).size().rename('weight').reset_index(
+                        drop=False)
     g = gt.Graph()
-    v_raw_ids = g.add_edge_list(w[['from_raw_id', 'to_raw_id']].values,
-                                hashed=True)
+    v_raw_ids = g.add_edge_list(
+        w[['from_raw_id', 'to_raw_id']].values, hashed=True)
     g.vp['raw_id'] = v_raw_ids
     e_weight = g.new_edge_property("double")
     e_weight.a = w['weight'].values
@@ -61,16 +61,16 @@ def centralities(g, user_map):
     e, ev = gt.eigenvector(g)
     # screen_name
     screen_name = user_map.loc[g.vp['raw_id'].a.copy()].values
-    df = pd.DataFrame(dict(
-        screen_name=screen_name,
-        in_degree=ki.a,
-        out_degree=ko.a,
-        weighted_in_degree=si.a,
-        weighted_out_degree=so.a,
-        page_rank=pr.a,
-        betweenness=vb.a,
-        eigenvector=ev.a
-    ))
+    df = pd.DataFrame(
+        dict(
+            screen_name=screen_name,
+            in_degree=ki.a,
+            out_degree=ko.a,
+            weighted_in_degree=si.a,
+            weighted_out_degree=so.a,
+            page_rank=pr.a,
+            betweenness=vb.a,
+            eigenvector=ev.a))
     df.to_csv('centralities.raw.csv')
     df = df.sort_values('in_degree', ascending=False)
     ranked_ki = df.screen_name.values.copy()
@@ -86,16 +86,64 @@ def centralities(g, user_map):
     ranked_bt = df.screen_name.values.copy()
     df = df.sort_values('eigenvector', ascending=False)
     ranked_ev = df.screen_name.values.copy()
-    ranked_df = pd.DataFrame(dict(
-        in_degree=ranked_ki,
-        out_degree=ranked_ko,
-        weighted_in_degree=ranked_si,
-        weighted_out_degree=ranked_so,
-        page_rank=ranked_pr,
-        betweenness=ranked_bt,
-        eigenvector=ranked_ev
-    ))
+    ranked_df = pd.DataFrame(
+        dict(
+            in_degree=ranked_ki,
+            out_degree=ranked_ko,
+            weighted_in_degree=ranked_si,
+            weighted_out_degree=ranked_so,
+            page_rank=ranked_pr,
+            betweenness=ranked_bt,
+            eigenvector=ranked_ev))
     ranked_df.to_csv('centralities.ranked.csv', index=False)
+
+
+def rank_centralities(fn1='centralities.raw.csv', fn2='retweet.1108.vmap.csv'):
+    df1 = pd.read_csv(fn1)
+    vmap = pd.read_csv(fn2)
+    df = df.sort_values('in_degree', ascending=False)
+    ranked_ki = df.screen_name.values.copy()
+    ranked_kii = vmap.loc[df.index.tolist()]
+    df = df.sort_values('out_degree', ascending=False)
+    ranked_ko = df.screen_name.values.copy()
+    ranked_koi = vmap.loc[df.index.tolist()]
+    df = df.sort_values('weighted_in_degree', ascending=False)
+    ranked_si = df.screen_name.values.copy()
+    ranked_si = vmap.loc[df.index.tolist()]
+    df = df.sort_values('weighted_out_degree', ascending=False)
+    ranked_so = df.screen_name.values.copy()
+    ranked_si = vmap.loc[df.index.tolist()]
+    df = df.sort_values('page_rank', ascending=False)
+    ranked_pr = df.screen_name.values.copy()
+    ranked_pri = vmap.loc[df.index.tolist()]
+    df = df.sort_values('betweenness', ascending=False)
+    ranked_bt = df.screen_name.values.copy()
+    ranked_bti = vmap.loc[df.index.tolist()]
+    df = df.sort_values('eigenvector', ascending=False)
+    ranked_ev = df.screen_name.values.copy()
+    ranked_evi = vmap.loc[df.index.tolist()]
+    ranked_df_sn = pd.DataFrame(
+        dict(
+            in_degree=ranked_ki,
+            out_degree=ranked_ko,
+            weighted_in_degree=ranked_si,
+            weighted_out_degree=ranked_so,
+            page_rank=ranked_pr,
+            betweenness=ranked_bt,
+            eigenvector=ranked_ev))
+    ranked_df_sn.to_csv('centralities.ranked.screen_name.csv', index=False)
+    ranked_df_id = pd.DataFrame(
+        dict(
+            in_degree=ranked_kii,
+            out_degree=ranked_koi,
+            weighted_in_degree=ranked_sii,
+            weighted_out_degree=ranked_soi,
+            page_rank=ranked_pri,
+            betweenness=ranked_bti,
+            eigenvector=ranked_evi))
+    ranked_df_id.to_csv('centralities.ranked.raw_id.csv', index=False)
+
+
 
 
 def distance_histogram(g):
@@ -123,8 +171,7 @@ def k_core_evolution(fn, ofn=None, freq='D'):
     if ofn is None:
         ofn = 'k_core_evolution.csv'
     # load only necessary columns
-    df = pd.read_csv(fn, parse_dates=['tweet_created_at'],
-                     usecols=[2, 3, 4])
+    df = pd.read_csv(fn, parse_dates=['tweet_created_at'], usecols=[2, 3, 4])
     df = df.set_index('tweet_created_at')
     # remove self-loop
     df = df.loc[df.from_raw_id != df.to_raw_id]
@@ -142,8 +189,9 @@ def k_core_evolution(fn, ofn=None, freq='D'):
     mcore_num = []
     mcore_idx = []
     ts = []
-    for created_at, from_raw_id, to_raw_id, gpf\
-        in df[['from_raw_id', 'to_raw_id', 'gpf']].itertuples():
+    for created_at, from_raw_id, to_raw_id, gpf in df[[
+            'from_raw_id', 'to_raw_id', 'gpf'
+    ]].itertuples():
         e = (from_raw_id, to_raw_id)
         if e not in e_set:
             if from_raw_id not in v_map:
@@ -166,14 +214,13 @@ def k_core_evolution(fn, ofn=None, freq='D'):
             mcore_num.append(mn)
             mcore_idx.append(kcore.loc[kcore == mk].index.tolist())
             logger.info(g)
-            logger.info('Main core at %s: k=%s, num=%s',
-                        created_at, mk, mn)
-    cdf = pd.DataFrame(dict(
-        timeline=ts,
-        mcore_k=mcore_k,
-        mcore_num=mcore_num,
-        mcore_idx=mcore_idx,
-    ))
+            logger.info('Main core at %s: k=%s, num=%s', created_at, mk, mn)
+    cdf = pd.DataFrame(
+        dict(
+            timeline=ts,
+            mcore_k=mcore_k,
+            mcore_num=mcore_num,
+            mcore_idx=mcore_idx,))
     cdf.to_csv(ofn, index=False)
     v_series = pd.Series(v_map)
     v_series.to_csv('vertex_map.csv')
@@ -181,11 +228,21 @@ def k_core_evolution(fn, ofn=None, freq='D'):
 
 def plot_kcore_timeline(fn='k_core_evolution.csv'):
     df = pd.read_csv(fn, parse_dates=['timeline'])
-    fig, ax = plt.subplots()
+    m = df.mcore_num.groupby(df.mcore_k).max()
+    m.index = df.timeline.groupby(df.mcore_k).first().values
+
+    fig, ax = plt.subplots(figsize=(4, 3))
     ax2 = ax.twinx()
-    ax2.plot(df.timeline.values, df.mcore_k, label='K of Main Core', color='b')
-    ax.plot(df.timeline.values, df.mcore_num, label='Number of Main core',
-            color='r')
+    l1, = ax2.plot(df.timeline.values, df.mcore_k, color='b')
+    ax2.set_ylabel('k')
+    l2, = ax.plot(
+        m.index.values,
+        m.values,
+        color='r')
+    ax.set_ylabel('n')
+    labels = ax.get_xticklabels()
+    plt.setp(labels, rotation=-30, fontsize=10)
+    plt.legend([l1, l2], ['k of Main Cores', 'Size of Main Cores n'])
     plt.tight_layout()
     plt.savefig('k-core.pdf')
 
@@ -214,16 +271,15 @@ def main_core(df):
     w = df.groupby(['from_raw_id', 'to_raw_id']).size().\
         rename('weight').reset_index(drop=False)
     g = gt.Graph()
-    v_raw_ids = g.add_edge_list(w[['from_raw_id', 'to_raw_id']].values,
-                                hashed=True).a.copy()
+    v_raw_ids = g.add_edge_list(
+        w[['from_raw_id', 'to_raw_id']].values, hashed=True).a.copy()
     kcores = gt.kcore_decomposition(g).a.copy()
     s = pd.Series(kcores)
-    return v_raw_ids[s.loc[s==s.max()].index]
+    return v_raw_ids[s.loc[s == s.max()].index]
 
 
 def rolling_k_core(fn='retweet.201710.claim.raw.csv'):
-    df = pd.read_csv(fn, parse_dates=['tweet_created_at'],
-                     usecols=[2, 3, 4])
+    df = pd.read_csv(fn, parse_dates=['tweet_created_at'], usecols=[2, 3, 4])
     df = df.set_index('tweet_created_at')
     # remove self-loop
     df = df.loc[df.from_raw_id != df.to_raw_id]
@@ -231,11 +287,11 @@ def rolling_k_core(fn='retweet.201710.claim.raw.csv'):
     df2 = df.loc['2016-11-08':'2017-04-07']
     df3 = df.loc['2017-04-08':]
     logger.info('Dataset 1: rows %s, days %s',
-                len(df1), df1.index.max()-df1.index.min())
+                len(df1), df1.index.max() - df1.index.min())
     logger.info('Dataset 2: rows %s, days %s',
-                len(df2), df2.index.max()-df2.index.min())
+                len(df2), df2.index.max() - df2.index.min())
     logger.info('Dataset 3: rows %s, days %s',
-                len(df3), df3.index.max()-df3.index.min())
+                len(df3), df3.index.max() - df3.index.min())
     s1 = set(main_core(df1))
     s2 = set(main_core(df2))
     s3 = set(main_core(df3))
@@ -245,4 +301,20 @@ def rolling_k_core(fn='retweet.201710.claim.raw.csv'):
     logger.info('Union: %s', len(unions))
     unchanged.to_csv('k_core.3.intersection.csv', index=False)
     unions.to_csv('k_core.3.union.csv', index=False)
+
+
+def rearrange_ranked_centralities(fn='centralities.20.raw.csv'):
+    df = pd.read_csv(fn)
+    data = []
+    for c in df.columns:
+        data += [(i, c, v) for i,v in df[c].iteritems()]
+    ndf = pd.DataFrame(data, columns= ['rank', 'centrality', 'screen_name'])
+    ndf.to_csv('centralities.20.csv', index=False)
+
+
+def vid2sn(vids, fn='vmap.csv', vmap=None):
+    if vmap is None:
+        vmap = pd.read_csv('vmap.csv')
+    ivmap = vmap.set_index('vid').screen_name
+    return ivmap.loc[vids].tolist()
 
