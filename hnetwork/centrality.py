@@ -106,24 +106,31 @@ def rank_centralities(fn1='centralities.raw.csv',
     df = df.sort_values('in_degree', ascending=False)
     ranked_ki = df.screen_name.values.copy()
     ranked_kii = vmap.loc[df.index.tolist()].values.copy()
+    ranked_kiv = df.in_degree.values.copy()
     df = df.sort_values('out_degree', ascending=False)
     ranked_ko = df.screen_name.values.copy()
     ranked_koi = vmap.loc[df.index.tolist()].values.copy()
+    ranked_kov = df.out_degree.values.copy()
     df = df.sort_values('weighted_in_degree', ascending=False)
     ranked_si = df.screen_name.values.copy()
     ranked_sii = vmap.loc[df.index.tolist()].values.copy()
+    ranked_siv = df.weighted_in_degree.values.copy()
     df = df.sort_values('weighted_out_degree', ascending=False)
     ranked_so = df.screen_name.values.copy()
     ranked_soi = vmap.loc[df.index.tolist()].values.copy()
+    ranked_sov = df.weighted_out_degree.values.copy()
     df = df.sort_values('page_rank', ascending=False)
     ranked_pr = df.screen_name.values.copy()
     ranked_pri = vmap.loc[df.index.tolist()].values.copy()
+    ranked_prv = df.page_rank.values.copy()
     df = df.sort_values('betweenness', ascending=False)
     ranked_bt = df.screen_name.values.copy()
     ranked_bti = vmap.loc[df.index.tolist()].values.copy()
+    ranked_btv = df.betweenness.values.copy()
     df = df.sort_values('eigenvector', ascending=False)
     ranked_ev = df.screen_name.values.copy()
     ranked_evi = vmap.loc[df.index.tolist()].values.copy()
+    ranked_evv = df.eigenvector.values.copy()
     ranked_df_sn = pd.DataFrame(
         dict(
             in_degree=ranked_ki,
@@ -144,6 +151,16 @@ def rank_centralities(fn1='centralities.raw.csv',
             betweenness=ranked_bti,
             eigenvector=ranked_evi))
     ranked_df_id.to_csv('centralities.ranked.raw_id.csv', index=False)
+    ranked_df_v = pd.DataFrame(
+        dict(
+            in_degree=ranked_kiv,
+            out_degree=ranked_kov,
+            weighted_in_degree=ranked_siv,
+            weighted_out_degree=ranked_sov,
+            page_rank=ranked_prv,
+            betweenness=ranked_btv,
+            eigenvector=ranked_evv))
+    ranked_df_v.to_csv('centralities.ranked.values.csv', index=False)
 
 
 def distance_histogram(g):
