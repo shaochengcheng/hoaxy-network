@@ -102,6 +102,7 @@ ENV/
 
 # data
 data
+data_backup
 
 # DS_Store
 .DS_Store

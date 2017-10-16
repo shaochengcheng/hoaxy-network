@@ -146,8 +146,6 @@ def rank_centralities(fn1='centralities.raw.csv',
     ranked_df_id.to_csv('centralities.ranked.raw_id.csv', index=False)
 
 
-
-
 def distance_histogram(g):
     counts, bins = gt.distance_histogram(g)
     df = pd.DataFrame(dict(counts=counts))
@@ -228,6 +226,75 @@ def k_core_evolution(fn, ofn=None, freq='D'):
     v_series.to_csv('vertex_map.csv')
 
 
+def k_core_evolution_random_rewire(fn,
+                              ofn=None,
+                              freq='D',
+                              model='constrained-configuration'):
+    if ofn is None:
+        ofn = 'k_core_evolution_{}.csv'.format(model)
+    # load only necessary columns
+    df = pd.read_csv(fn, parse_dates=['tweet_created_at'], usecols=[2, 3, 4])
+    df = df.set_index('tweet_created_at')
+    # remove self-loop
+    df = df.loc[df.from_raw_id != df.to_raw_id]
+    df['row_id'] = np.arange(len(df))
+    df['gpf'] = False
+    gpf_rows = df.row_id.groupby(pd.Grouper(freq=freq)).last()
+    gpf_rows = gpf_rows.loc[gpf_rows.notnull()].astype('int')
+    df.loc[df.row_id.isin(gpf_rows.values), 'gpf'] = True
+
+    v_map = dict()
+    e_set = set()
+    v_counter = -1
+    g = gt.Graph()
+    mcore_k = []
+    mcore_num = []
+    mcore_idx = []
+    nv = []
+    ne = []
+    ts = []
+    for created_at, from_raw_id, to_raw_id, gpf in df[[
+            'from_raw_id', 'to_raw_id', 'gpf'
+    ]].itertuples():
+        e = (from_raw_id, to_raw_id)
+        if e not in e_set:
+            if from_raw_id not in v_map:
+                v_counter += 1
+                v_map[from_raw_id] = v_counter
+            if to_raw_id not in v_map:
+                v_counter += 1
+                v_map[to_raw_id] = v_counter
+            source = v_map.get(from_raw_id)
+            target = v_map.get(to_raw_id)
+            g.add_edge(source, target, add_missing=True)
+            e_set.add(e)
+        if gpf:
+            g1 = g.copy()
+            rejected = gt.random_rewire(g1, model=model, edge_sweep=True)
+            logger.info('Number of rejected when rewiring: %s', rejected)
+            ts.append(created_at)
+            kcore = pd.Series(gt.kcore_decomposition(g1).a.copy())
+            mcore = kcore.value_counts().sort_index(ascending=False)
+            mk = mcore.index[0]
+            mn = mcore.iloc[0], rejected
+            mcore_k.append(mk)
+            mcore_num.append(mn)
+            mcore_idx.append(kcore.loc[kcore == mk].index.tolist())
+            logger.info(g)
+            nv.append(g.num_vertices())
+            ne.append(g.num_edges())
+            logger.info('Main core at %s: k=%s, num=%s', created_at, mk, mn)
+    cdf = pd.DataFrame(
+        dict(
+            timeline=ts,
+            mcore_k=mcore_k,
+            mcore_num=mcore_num,
+            mcore_idx=mcore_idx,
+            num_vertices=nv,
+            num_edges=ne,))
+    cdf.to_csv(ofn, index=False)
+
+
 def plot_kcore_timeline(fn='k_core_evolution.csv'):
     df = pd.read_csv(fn, parse_dates=['timeline'])
     m = df.mcore_num.groupby(df.mcore_k).max()
@@ -237,10 +304,7 @@ def plot_kcore_timeline(fn='k_core_evolution.csv'):
     ax2 = ax.twinx()
     l1, = ax2.plot(df.timeline.values, df.mcore_k, color='b')
     ax2.set_ylabel('k')
-    l2, = ax.plot(
-        m.index.values,
-        m.values,
-        color='r')
+    l2, = ax.plot(m.index.values, m.values, color='r')
     ax.set_ylabel('n')
     labels = ax.get_xticklabels()
     plt.setp(labels, rotation=-30, fontsize=10)
@@ -309,8 +373,8 @@ def rearrange_ranked_centralities(fn='centralities.20.raw.csv'):
     df = pd.read_csv(fn)
     data = []
     for c in df.columns:
-        data += [(i, c, v) for i,v in df[c].iteritems()]
-    ndf = pd.DataFrame(data, columns= ['rank', 'centrality', 'screen_name'])
+        data += [(i, c, v) for i, v in df[c].iteritems()]
+    ndf = pd.DataFrame(data, columns=['rank', 'centrality', 'screen_name'])
     ndf.to_csv('centralities.20.csv', index=False)
 
 
@@ -319,4 +383,3 @@ def vid2sn(vids, fn='vmap.csv', vmap=None):
         vmap = pd.read_csv('vmap.csv')
     ivmap = vmap.set_index('vid').screen_name
     return ivmap.loc[vids].tolist()
-
