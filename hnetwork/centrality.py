@@ -293,7 +293,7 @@ def k_core_evolution_random_rewire(fn,
             kcore = pd.Series(gt.kcore_decomposition(g1).a.copy())
             mcore = kcore.value_counts().sort_index(ascending=False)
             mk = mcore.index[0]
-            mn = mcore.iloc[0], rejected
+            mn = mcore.iloc[0]
             mcore_k.append(mk)
             mcore_num.append(mn)
             mcore_idx.append(kcore.loc[kcore == mk].index.tolist())
@@ -304,6 +304,136 @@ def k_core_evolution_random_rewire(fn,
     cdf = pd.DataFrame(
         dict(
             timeline=ts,
+            mcore_k=mcore_k,
+            mcore_num=mcore_num,
+            mcore_idx=mcore_idx,
+            num_vertices=nv,
+            num_edges=ne,))
+    cdf.to_csv(ofn, index=False)
+
+
+def k_core_evolution_shuffle(fn1,
+                             fn2='graph.daily.csv',
+                              ofn=None,
+                              freq='D',
+                              by='e'):
+    if ofn is None:
+        ofn = 'k_core_evolution_shuffle_groupby_{}.csv'.format(by)
+    # load only necessary columns
+    df = pd.read_csv(fn1, usecols=[3, 4])
+    # remove self-loop
+    df = df.loc[df.from_raw_id != df.to_raw_id]
+    df = df.reindex(np.random.permutation(df.index))
+    veinfo = pd.read_csv(fn2)
+    if by == 'v':
+        vlist = veinfo['nv'].tolist()
+    elif by == 'e':
+        elist = veinfo['ne'].tolist()
+
+    v_map = dict()
+    e_set = set()
+    v_counter = -1
+    g = gt.Graph()
+    mcore_k = []
+    mcore_num = []
+    mcore_idx = []
+    nv = []
+    ne = []
+    gcounter = 0
+    for from_raw_id, to_raw_id in df[[ 'from_raw_id', 'to_raw_id'
+                                      ]].itertuples(index=False):
+        e = (from_raw_id, to_raw_id)
+        if e not in e_set:
+            if from_raw_id not in v_map:
+                v_counter += 1
+                v_map[from_raw_id] = v_counter
+            if to_raw_id not in v_map:
+                v_counter += 1
+                v_map[to_raw_id] = v_counter
+            source = v_map.get(from_raw_id)
+            target = v_map.get(to_raw_id)
+            g.add_edge(source, target, add_missing=True)
+            e_set.add(e)
+        is_group = False
+        if by == 'v':
+            try:
+                if g.num_vertices() == vlist[gcounter]:
+                    is_group = True
+                    gcounter += 1
+            except IndexError:
+                break
+        if by == 'e':
+            try:
+                if g.num_edges() == elist[gcounter]:
+                    is_group = True
+                    gcounter += 1
+            except IndexError:
+                 break
+        if is_group:
+            kcore = pd.Series(gt.kcore_decomposition(g).a.copy())
+            mcore = kcore.value_counts().sort_index(ascending=False)
+            mk = mcore.index[0]
+            mn = mcore.iloc[0]
+            mcore_k.append(mk)
+            mcore_num.append(mn)
+            mcore_idx.append(kcore.loc[kcore == mk].index.tolist())
+            nv.append(g.num_vertices())
+            ne.append(g.num_edges())
+            logger.info(g)
+            logger.info('Main core by %s: k=%s, num=%s', by, mk, mn)
+    cdf = pd.DataFrame(
+        dict(
+            mcore_k=mcore_k,
+            mcore_num=mcore_num,
+            mcore_idx=mcore_idx,
+            num_vertices=nv,
+            num_edges=ne,))
+    cdf.to_csv(ofn, index=False)
+
+
+def k_core_evolution_random_growing(fn1='retweet.201710.claim.raw.csv',
+                                    fn2='graph.daily.csv',
+                                    ofn=None,
+                                    rewiring='configuration'
+                              ):
+    if ofn is None:
+        cofn = 'k_core_evolution_random_growing.'
+    # load only necessary columns
+    g = prepare_network_from_raw(fn1)
+    if rewiring is not None:
+        gt.random_rewire(g, model=rewiring)
+        if ofn is None:
+            cofn += rewiring + '.'
+    if ofn is None:
+        ofn = cofn + 'csv'
+    evmap = pd.read_csv(fn2)
+    nelist = evmap['ne'].tolist()
+    emap = pd.DataFrame(g.get_edges().copy(),
+                        columns=['source', 'target', 'idx'])
+    emap = emap[['source', 'target']]
+    emap = emap.reindex(np.random.permutation(emap.index)
+                        ).reset_index(drop=True)
+    mcore_k = []
+    mcore_num = []
+    mcore_idx = []
+    nv = []
+    ne = []
+    for n in nelist:
+        g = gt.Graph()
+        g.add_edge_list(emap.iloc[:n].values, hashed=True)
+        kcore = pd.Series(gt.kcore_decomposition(g).a.copy())
+        mcore = kcore.value_counts().sort_index(ascending=False)
+        mk = mcore.index[0]
+        mn = mcore.iloc[0]
+        mcore_k.append(mk)
+        mcore_num.append(mn)
+        mcore_idx.append(kcore.loc[kcore == mk].index.tolist())
+        nv.append(g.num_vertices())
+        ne.append(g.num_edges())
+        logger.info(g)
+        logger.info('Main core with num of e %s: k=%s, num=%s', n, mk, mn)
+    cdf = pd.DataFrame(
+        dict(
             mcore_k=mcore_k,
             mcore_num=mcore_num,
             mcore_idx=mcore_idx,
