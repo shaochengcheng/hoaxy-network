@@ -184,9 +184,9 @@ def v_percolate(g, vertices, ofn):
     plt.savefig(ofn)
 
 
-def k_core_evolution(fn, ofn=None, freq='D'):
+def kcore_growing(fn, ofn=None, freq='D'):
     if ofn is None:
-        ofn = 'k_core_evolution.csv'
+        ofn = 'kcore_growing.csv'
     # load only necessary columns
     df = pd.read_csv(fn, parse_dates=['tweet_created_at'], usecols=[2, 3, 4])
     df = df.set_index('tweet_created_at')
@@ -203,8 +203,11 @@ def k_core_evolution(fn, ofn=None, freq='D'):
     v_counter = -1
     g = gt.Graph()
     mcore_k = []
-    mcore_num = []
+    mcore_s = []
     mcore_idx = []
+    vnum = []
+    enum = []
+    largest_component_vnum = []
     ts = []
     for created_at, from_raw_id, to_raw_id, gpf in df[[
             'from_raw_id', 'to_raw_id', 'gpf'
@@ -226,29 +229,39 @@ def k_core_evolution(fn, ofn=None, freq='D'):
             kcore = pd.Series(gt.kcore_decomposition(g).a.copy())
             mcore = kcore.value_counts().sort_index(ascending=False)
             mk = mcore.index[0]
-            mn = mcore.iloc[0]
+            ms = mcore.iloc[0]
             mcore_k.append(mk)
-            mcore_num.append(mn)
+            mcore_s.append(ms)
             mcore_idx.append(kcore.loc[kcore == mk].index.tolist())
+            lcv = gt.label_largest_component(g, directed=False)
+            vnum.append(g.num_vertices())
+            enum.append(g.num_edges())
+            largest_component_vnum.append(lcv.a.sum())
             logger.info(g)
-            logger.info('Main core at %s: k=%s, num=%s', created_at, mk, mn)
+            logger.info('Main core at %s: k=%s, num=%s', created_at, mk, ms)
     cdf = pd.DataFrame(
         dict(
             timeline=ts,
             mcore_k=mcore_k,
-            mcore_num=mcore_num,
-            mcore_idx=mcore_idx,))
+            mcore_s=mcore_s,
+            mcore_idx=mcore_idx,
+            vnum=vnum,
+            enum=enum,
+            largest_commponent_vnum=largest_component_vnum
+        ))
     cdf.to_csv(ofn, index=False)
     v_series = pd.Series(v_map)
-    v_series.to_csv('vertex_map.csv')
+    v_series.name = 'raw_id'
+    v_series.index.name = 'v_idx'
+    v_series.to_csv('vertex_map.csv', index=True, header=True)
 
 
-def k_core_evolution_random_rewire(fn,
+def kcore_growing_daily_rewiring(fn,
                               ofn=None,
                               freq='D',
                               model='constrained-configuration'):
     if ofn is None:
-        ofn = 'k_core_evolution_{}.csv'.format(model)
+        ofn = 'kcore.growing.daily-rewiring.{}.csv'.format(model)
     # load only necessary columns
     df = pd.read_csv(fn, parse_dates=['tweet_created_at'], usecols=[2, 3, 4])
     df = df.set_index('tweet_created_at')
@@ -265,10 +278,11 @@ def k_core_evolution_random_rewire(fn,
     v_counter = -1
     g = gt.Graph()
     mcore_k = []
-    mcore_num = []
+    mcore_s = []
     mcore_idx = []
-    nv = []
-    ne = []
+    vnum = []
+    enum = []
+    largest_component_vnum = []
     ts = []
     for created_at, from_raw_id, to_raw_id, gpf in df[[
             'from_raw_id', 'to_raw_id', 'gpf'
@@ -293,53 +307,56 @@ def k_core_evolution_random_rewire(fn,
             kcore = pd.Series(gt.kcore_decomposition(g1).a.copy())
             mcore = kcore.value_counts().sort_index(ascending=False)
             mk = mcore.index[0]
-            mn = mcore.iloc[0]
+            ms = mcore.iloc[0]
             mcore_k.append(mk)
-            mcore_num.append(mn)
+            mcore_s.append(ms)
             mcore_idx.append(kcore.loc[kcore == mk].index.tolist())
-            logger.info(g)
-            nv.append(g.num_vertices())
-            ne.append(g.num_edges())
-            logger.info('Main core at %s: k=%s, num=%s', created_at, mk, mn)
+            lcv = gt.label_largest_component(g1, directed=False)
+            vnum.append(g1.num_vertices())
+            enum.append(g1.num_edges())
+            largest_component_vnum.append(lcv.a.sum())
+            logger.info(g1)
+            logger.info('Main core at %s: k=%s, num=%s', created_at, mk, ms)
     cdf = pd.DataFrame(
         dict(
             timeline=ts,
             mcore_k=mcore_k,
-            mcore_num=mcore_num,
+            mcore_s=mcore_s,
             mcore_idx=mcore_idx,
-            num_vertices=nv,
-            num_edges=ne,))
+            vnum=vnum,
+            enum=enum,
+            largest_commponent_vnum=largest_component_vnum
+        ))
     cdf.to_csv(ofn, index=False)
 
 
-def k_core_evolution_shuffle(fn1,
-                             fn2='graph.daily.csv',
-                              ofn=None,
-                              freq='D',
-                              by='e'):
+def kcore_growing_weighted_shuffle(fn1,
+                                fn2='graph.daily.csv',
+                             ofn=None,
+                             freq='D'
+                             ):
     if ofn is None:
-        ofn = 'k_core_evolution_shuffle_groupby_{}.csv'.format(by)
+        ofn = 'kcore.growing.weighted-shuffle.csv'
     # load only necessary columns
     df = pd.read_csv(fn1, usecols=[3, 4])
     # remove self-loop
     df = df.loc[df.from_raw_id != df.to_raw_id]
     df = df.reindex(np.random.permutation(df.index))
-    veinfo = pd.read_csv(fn2)
-    if by == 'v':
-        vlist = veinfo['nv'].tolist()
-    elif by == 'e':
-        elist = veinfo['ne'].tolist()
-
+    evmap = pd.read_csv(fn2)
+    enum_list = evmap['enum'].tolist()
     v_map = dict()
-    e_set = set()
     v_counter = -1
+    e_set = set()
+    gp_counter = 0
     g = gt.Graph()
     mcore_k = []
-    mcore_num = []
+    mcore_s = []
     mcore_idx = []
-    nv = []
-    ne = []
-    gcounter = 0
+    vnum = []
+    enum = []
+    largest_component_vnum = []
+    ts = []
+    g = gt.Graph()
     for from_raw_id, to_raw_id in df[[ 'from_raw_id', 'to_raw_id'
                                       ]].itertuples(index=False):
         e = (from_raw_id, to_raw_id)
@@ -354,91 +371,170 @@ def k_core_evolution_shuffle(fn1,
             target = v_map.get(to_raw_id)
             g.add_edge(source, target, add_missing=True)
             e_set.add(e)
-        is_group = False
-        if by == 'v':
-            try:
-                if g.num_vertices() == vlist[gcounter]:
-                    is_group = True
-                    gcounter += 1
-            except IndexError:
-                break
-        if by == 'e':
-            try:
-                if g.num_edges() == elist[gcounter]:
-                    is_group = True
-                    gcounter += 1
-            except IndexError:
-                 break
-        if is_group:
+        if g.num_edges() >= enum_list[gp_counter]:
             kcore = pd.Series(gt.kcore_decomposition(g).a.copy())
             mcore = kcore.value_counts().sort_index(ascending=False)
             mk = mcore.index[0]
-            mn = mcore.iloc[0]
+            ms = mcore.iloc[0]
             mcore_k.append(mk)
-            mcore_num.append(mn)
+            mcore_s.append(ms)
             mcore_idx.append(kcore.loc[kcore == mk].index.tolist())
-            nv.append(g.num_vertices())
-            ne.append(g.num_edges())
+            lcv = gt.label_largest_component(g, directed=False)
+            vnum.append(g.num_vertices())
+            enum.append(g.num_edges())
+            largest_component_vnum.append(lcv.a.sum())
             logger.info(g)
-            logger.info('Main core by %s: k=%s, num=%s', by, mk, mn)
+            logger.info('gp counter: %s', gp_counter)
+            logger.info('Main core at enum=%s: k=%s, num=%s',
+                        g.num_edges(), mk, ms)
+            gp_counter += 1
+            if gp_counter > len(enum_list):
+                break
     cdf = pd.DataFrame(
         dict(
             mcore_k=mcore_k,
-            mcore_num=mcore_num,
+            mcore_s=mcore_s,
             mcore_idx=mcore_idx,
-            num_vertices=nv,
-            num_edges=ne,))
+            vnum=vnum,
+            enum=enum,
+            largest_commponent_vnum=largest_component_vnum
+        ))
     cdf.to_csv(ofn, index=False)
 
 
-def k_core_evolution_random_growing(fn1='retweet.201710.claim.raw.csv',
-                                    fn2='graph.daily.csv',
-                                    ofn=None,
-                                    rewiring='configuration'
-                              ):
+def kcore_growing_shuffle(fn1='retweet.201710.claim.raw.csv',
+                          fn2='graph.daily.csv',
+                          ofn=None,
+                          rewiring=None
+                          ):
     if ofn is None:
-        cofn = 'k_core_evolution_random_growing.'
-    # load only necessary columns
+        ofn = 'kcore.growing.shuffle'
+        if rewiring:
+            ofn += '.' + rewiring
+        ofn += '.csv'
     g = prepare_network_from_raw(fn1)
     if rewiring is not None:
         gt.random_rewire(g, model=rewiring)
-        if ofn is None:
-            cofn += rewiring + '.'
-    if ofn is None:
-        ofn = cofn + 'csv'
     evmap = pd.read_csv(fn2)
-    nelist = evmap['ne'].tolist()
+    enum_list = evmap['enum'].tolist()
     emap = pd.DataFrame(g.get_edges().copy(),
                         columns=['source', 'target', 'idx'])
     emap = emap[['source', 'target']]
     emap = emap.reindex(np.random.permutation(emap.index)
                         ).reset_index(drop=True)
+    v_map = dict()
+    v_counter = -1
+    gp_counter = 0
+    g = gt.Graph()
     mcore_k = []
-    mcore_num = []
+    mcore_s = []
     mcore_idx = []
-    nv = []
-    ne = []
-    for n in nelist:
-        g = gt.Graph()
-        g.add_edge_list(emap.iloc[:n].values, hashed=True)
-        kcore = pd.Series(gt.kcore_decomposition(g).a.copy())
-        mcore = kcore.value_counts().sort_index(ascending=False)
-        mk = mcore.index[0]
-        mn = mcore.iloc[0]
-        mcore_k.append(mk)
-        mcore_num.append(mn)
-        mcore_idx.append(kcore.loc[kcore == mk].index.tolist())
-        nv.append(g.num_vertices())
-        ne.append(g.num_edges())
-        logger.info(g)
-        logger.info('Main core with num of e %s: k=%s, num=%s', n, mk, mn)
+    vnum = []
+    enum = []
+    largest_component_vnum = []
+    g = gt.Graph()
+    for i, s, t in emap.itertuples():
+        if s not in v_map:
+            v_counter += 1
+            v_map[s] = v_counter
+        if t not in v_map:
+            v_counter += 1
+            v_map[t] = v_counter
+        source = v_map.get(s)
+        target = v_map.get(t)
+        g.add_edge(source, target, add_missing=True)
+        if g.num_edges() >= enum_list[gp_counter]:
+            kcore = pd.Series(gt.kcore_decomposition(g).a.copy())
+            mcore = kcore.value_counts().sort_index(ascending=False)
+            mk = mcore.index[0]
+            ms = mcore.iloc[0]
+            mcore_k.append(mk)
+            mcore_s.append(ms)
+            mcore_idx.append(kcore.loc[kcore == mk].index.tolist())
+            lcv = gt.label_largest_component(g, directed=False)
+            vnum.append(g.num_vertices())
+            enum.append(g.num_edges())
+            largest_component_vnum.append(lcv.a.sum())
+            logger.info(g)
+            logger.info('gp counter: %s', gp_counter)
+            logger.info('Main core at enum=%s: k=%s, num=%s',
+                        g.num_edges(), mk, ms)
+            gp_counter += 1
     cdf = pd.DataFrame(
         dict(
             mcore_k=mcore_k,
-            mcore_num=mcore_num,
+            mcore_s=mcore_s,
             mcore_idx=mcore_idx,
-            num_vertices=nv,
-            num_edges=ne,))
+            vnum=vnum,
+            enum=enum,
+            largest_commponent_vnum=largest_component_vnum
+        ))
+    cdf.to_csv(ofn, index=False)
+
+
+def kcore_growing_ba(fn1='ba.gml',
+                          fn2='graph.daily.csv',
+                          ofn=None,
+                          ):
+    if ofn is None:
+        ofn = 'kcore.growing.ba.csv'
+    g = gt.load_graph(fn1)
+    evmap = pd.read_csv(fn2)
+    vnum_list = evmap['vnum'].tolist()
+    emap = pd.DataFrame(g.get_edges().copy(),
+                        columns=['source', 'target', 'idx'])
+    emap = emap[['source', 'target']]
+    v_map = dict()
+    v_counter = -1
+    gp_counter = 0
+    g = gt.Graph()
+    mcore_k = []
+    mcore_s = []
+    mcore_idx = []
+    vnum = []
+    enum = []
+    largest_component_vnum = []
+    g = gt.Graph()
+    for i, s, t in emap.itertuples():
+        if s not in v_map:
+            v_counter += 1
+            v_map[s] = v_counter
+        if t not in v_map:
+            v_counter += 1
+            v_map[t] = v_counter
+        source = v_map.get(s)
+        target = v_map.get(t)
+        g.add_edge(source, target, add_missing=True)
+        if g.num_vertices() >= vnum_list[gp_counter]:
+            kcore = pd.Series(gt.kcore_decomposition(g).a.copy())
+            mcore = kcore.value_counts().sort_index(ascending=False)
+            mk = mcore.index[0]
+            ms = mcore.iloc[0]
+            mcore_k.append(mk)
+            mcore_s.append(ms)
+            mcore_idx.append(kcore.loc[kcore == mk].index.tolist())
+            lcv = gt.label_largest_component(g, directed=False)
+            vnum.append(g.num_vertices())
+            enum.append(g.num_edges())
+            largest_component_vnum.append(lcv.a.sum())
+            logger.info(g)
+            logger.info('gp counter: %s', gp_counter)
+            logger.info('Main core at vnum=%s: k=%s, num=%s',
+                        g.num_vertices(), mk, ms)
+            gp_counter += 1
+            try:
+                vnum_list[gp_counter]
+            except IndexError:
+                break
+    cdf = pd.DataFrame(
+        dict(
+            mcore_k=mcore_k,
+            mcore_s=mcore_s,
+            mcore_idx=mcore_idx,
+            vnum=vnum,
+            enum=enum,
+            largest_commponent_vnum=largest_component_vnum
+        ))
     cdf.to_csv(ofn, index=False)
 
 
