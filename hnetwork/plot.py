@@ -1,11 +1,11 @@
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 from scipy.stats import kendalltau
 from scipy.stats import spearmanr
 from scipy.stats import ttest_ind
 from scipy.stats import ks_2samp
 from scipy.stats import mannwhitneyu
-import matplotlib.pyplot as plt
 
 import logging
 
@@ -15,33 +15,93 @@ C2 = '#FF7F00'
 FIGSIZE = (4, 3)
 
 
-def bot_centrality_rank(top=1000,
-                        fn1='ubs.csv',
-                        fn2='centralities.ranked.raw_id.csv',
-                        fn3='centralities.ranked.values.csv'):
-    if top > 1000:
-        raise ValueError('Top should not larger than 1000!')
-    df1 = pd.read_csv(fn1)
-    bmap = df1.set_index('user_raw_id').bot_score_en
-    df2 = pd.read_csv(fn2)
-    df3 = pd.read_csv(fn3)
-    df2 = df2.iloc[:top]
-    df3 = df3.iloc[:top]
-    correlations = []
-    for c in df3.columns:
-        bs = bmap.loc[df2[c].values]
-        df = pd.DataFrame(
-            dict(centrality=df3[c].values.copy(), bot_score=bs.values.copy()))
-        df = df.loc[df.bot_score.notnull()]
-        a1 = df.centrality.values
-        a2 = df.bot_score.values
-        rho, rhop = spearmanr(a1, a2)
-        tau, taup = kendalltau(a1, a2)
-        correlations.append((c, 'spearmanr', rho, rhop))
-        correlations.append((c, 'kendalltau', tau, taup))
-    df = pd.DataFrame(correlations)
-    df.to_csv('bot_centrality_correlation.{}.csv'.format(top), index=False)
-    return df
+def kcore_timeline(fns=[
+        'kcore.growing.csv', 'kcore.growing.shuffle.csv',
+        'kcore.growing.weighted-shuffle.csv', 'kcore.growing.ba.csv'
+],
+                   labels=['Shuffle', 'Weighted Shuffle', 'BA']):
+    df = pd.read_csv(fns[0], parse_dates=['timeline'])
+    df = df[['timeline', 'mcore_k', 'mcore_s']]
+    df = df.rename(columns=dict(
+        timeline='Timeline', mcore_k='K', mcore_s='Size'))
+    secondary_c = ['K']
+    for i, fn in enumerate(fns[1:]):
+        df2 = pd.read_csv(fns[1])
+        df2 = df2[['mcore_k', 'mcore_s']]
+        kname = 'K, ' + labels[i]
+        sname = 'Size, ' + labels[i]
+        df2.columns = [kname, sname]
+        secondary_c.append(kname)
+        df = pd.merge(df, df2, left_index=True, right_index=True)
+    ldf = df.groupby('K').last()
+    ldf = ldf.set_index('Timeline')
+    fig, ax = plt.subplots()
+    ldf.plot(ax=ax, secondary_y=secondary_c)
+    plt.tight_layout()
+
+
+def plot_kcore_timeline(fn='k_core_evolution.csv'):
+    df = pd.read_csv(fn, parse_dates=['timeline'])
+    m = df.mcore_num.groupby(df.mcore_k).max()
+    m.index = df.timeline.groupby(df.mcore_k).first().values
+
+    fig, ax = plt.subplots(figsize=(4, 3))
+    ax2 = ax.twinx()
+    l1, = ax2.plot(df.timeline.values, df.mcore_k, color='b')
+    ax2.set_ylabel('k')
+    l2, = ax.plot(m.index.values, m.values, color='r')
+    ax.set_ylabel('n')
+    labels = ax.get_xticklabels()
+    plt.setp(labels, rotation=-30, fontsize=10)
+    plt.legend([l1, l2], ['k of Main Cores', 'Size of Main Cores n'])
+    plt.tight_layout()
+    plt.savefig('k-core.pdf')
+
+
+def mcore(fn, bidx=None):
+    df = pd.read_csv(fn)
+    df[['mcore_k', 'mcore_s']].plot(secondary_y=['mcore_k'])
+    if bidx is None:
+        return
+    df['mcore_idx'] = df.mcore_idx.apply(eval).apply(set)
+    s0 = df.iloc[bidx].mcore_idx
+    print('Staring number: %s' % len(s0))
+    for idx, s in df.mcore_idx.iloc[bidx + 1:].iteritems():
+        s0 &= s
+    print('Unchanged number: %s' % len(s0))
+
+
+def hoaxy_usage(fn='hoaxy.usage.csv', ofn=None, top=2, logy=False):
+    """The usage of hoaxy frontend."""
+    if ofn is None:
+        ofn = 'hoaxy-usage.pdf'
+    df = pd.read_csv(fn, parse_dates=['timeline'])
+    df = df.set_index('timeline')
+    fig, ax = plt.subplots(figsize=(6, 4.5))
+    df.counts.plot(ax=ax, logy=logy, color=C1)
+    counter = 0
+    for ts, v, tlabels in df.loc[df.tlabels.notnull()].itertuples():
+        label = '\n'.join(eval(tlabels))
+        if counter == 1:
+            v += 500
+        else:
+            v += 50
+        ax.text(
+            ts,
+            v,
+            label,
+            horizontalalignment='center',
+            fontsize=9,
+            verticalalignment='bottom')
+        counter += 1
+    df.loc[df.tlabels.notnull()].counts.plot(
+        ax=ax, linestyle='None', marker='s', markersize=4, color=C2, alpha=0.6)
+    ax.set_xlim(['2016-12-15', '2017-04-10'])
+    ax.set_ylim([1e1, 1e5])
+    ax.set_xlabel('Timeline')
+    ax.set_ylabel('Daily Query Volume')
+    plt.tight_layout()
+    plt.savefig(ofn)
 
 
 def mcore_centrality_overlapping(tops=np.array(list(range(100, 2001, 100))),
@@ -60,17 +120,18 @@ def mcore_centrality_overlapping(tops=np.array(list(range(100, 2001, 100))),
             # jaccard.append(len(s1 & s0)/len(s1 | s0))
         r.append(jaccard)
     df = pd.DataFrame(r, columns=df1.columns, index=tops)
-    return df
+    df.plot()
+    plt.savefig('mcore_centrality_overlapping.pdf')
 
 
-def centrality_vs_rand(fn1='ubs.csv',
-                       fn2='retweet.1108.random.5000.csv',
-                       fn3='centralities.ranked.raw_id.csv',
-                       ofn='bots-of-users.pdf',
-                       sample_size=None,
-                       nbins=20,
-                       normed=True,
-                       figsize=FIGSIZE):
+def bot_centrality_vs_rand(fn1='ubs.csv',
+                           fn2='retweet.1108.random.5000.csv',
+                           fn3='centralities.ranked.raw_id.csv',
+                           ofn='bots-centrality-vs-rand.pdf',
+                           sample_size=None,
+                           nbins=20,
+                           normed=True,
+                           figsize=FIGSIZE):
     # pdb.set_trace()
     df1 = pd.read_csv(fn1)
     df2 = pd.read_csv(fn2)
@@ -131,14 +192,14 @@ def centrality_vs_rand(fn1='ubs.csv',
     plt.savefig(ofn)
 
 
-def mcore_vs_rand(fn1='ubs.csv',
-                  fn2='retweet.1108.random.5000.csv',
-                  fn3='retweet.1108.claim.kcore.raw.csv',
-                  ofn='bots-of-users.pdf',
-                  sample_size=None,
-                  nbins=20,
-                  normed=True,
-                  figsize=FIGSIZE):
+def bot_mcore_vs_rand(fn1='ubs.csv',
+                      fn2='retweet.1108.random.5000.csv',
+                      fn3='retweet.1108.claim.kcore.raw.csv',
+                      ofn='bots-mcore-vs-rand.pdf',
+                      sample_size=None,
+                      nbins=20,
+                      normed=True,
+                      figsize=FIGSIZE):
     # pdb.set_trace()
     df1 = pd.read_csv(fn1)
     df2 = pd.read_csv(fn2)
@@ -199,14 +260,14 @@ def mcore_vs_rand(fn1='ubs.csv',
     plt.savefig(ofn)
 
 
-def mcore_vs_centrality(fn1='ubs.csv',
-                        fn2='retweet.1108.claim.kcore.raw.csv',
-                        fn3='centralities.ranked.raw_id.csv',
-                        ofn='bots-of-users.pdf',
-                        sample_size=None,
-                        nbins=20,
-                        normed=True,
-                        figsize=FIGSIZE):
+def bot_mcore_vs_centrality(fn1='ubs.csv',
+                            fn2='retweet.1108.claim.kcore.raw.csv',
+                            fn3='centralities.ranked.raw_id.csv',
+                            ofn='bots-mcore-vs-centrality.pdf',
+                            sample_size=None,
+                            nbins=20,
+                            normed=True,
+                            figsize=FIGSIZE):
     # pdb.set_trace()
     df1 = pd.read_csv(fn1)
     df2 = pd.read_csv(fn2)
