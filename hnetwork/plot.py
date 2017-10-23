@@ -142,21 +142,21 @@ def hoaxy_usage(fn='hoaxy.usage.csv', ofn=None, top=2, logy=True):
         counter += 1
     df.loc[df.tlabels.notnull()].counts.plot(
         ax=ax, linestyle='None', marker='s', markersize=4, color=C2, alpha=0.6)
-    ax.fill_between(df.index.to_pydatetime(), 0, df.counts.values,
-                    facecolor='#E6F4FA')
+    ax.fill_between(
+        df.index.to_pydatetime(), 0, df.counts.values, facecolor='#E6F4FA')
     ax.set_xlim(['2016-12-16', '2017-04-26'])
     ax.set_ylim([1e1, 4e4])
     ax.set_xlabel('')
     ax.set_ylabel('Daily Query Volume')
-    ax.tick_params(axis='x', which='minor', bottom='off', top='off',
-                    labelbottom='off')
+    ax.tick_params(
+        axis='x', which='minor', bottom='off', top='off', labelbottom='off')
     plt.tight_layout()
     plt.savefig(ofn)
 
 
 def mcore_centrality_overlapping1(tops=np.array(list(range(100, 2001, 100))),
-                                 fn1='centralities.ranked.raw_id.csv',
-                                 fn2='retweet.1108.claim.kcore.raw.csv'):
+                                  fn1='centralities.ranked.raw_id.csv',
+                                  fn2='retweet.1108.claim.kcore.raw.csv'):
     df1 = pd.read_csv(fn1)
     df2 = pd.read_csv(fn2)
     s0 = set(df2.loc[df2.kcore == df2.kcore.max()].raw_id.values)
@@ -380,6 +380,7 @@ def bot_mcore_vs_centrality(fn1='ubs.csv',
 
 def rank_position_mcore_centrality_box(fn1='retweet.1108.claim.kcore.raw.csv',
                                        fn2='centralities.ranked.raw_id.csv'):
+    """The position of main cores located at different centralities."""
     df1 = pd.read_csv(fn1)
     df2 = pd.read_csv(fn2)
     df2['rank_id'] = df2.index.values + 1
@@ -406,6 +407,7 @@ def rank_position_mcore_centrality_box(fn1='retweet.1108.claim.kcore.raw.csv',
 def rank_position_mcore_centrality_violin(
         fn1='retweet.1108.claim.kcore.raw.csv',
         fn2='centralities.ranked.raw_id.csv'):
+    """The position of main cores located at different centralities."""
     df1 = pd.read_csv(fn1)
     df2 = pd.read_csv(fn2)
     df2['rank_id'] = df2.index.values + 10
@@ -429,6 +431,7 @@ def rank_position_mcore_centrality_violin(
 def rank_position_mcore_centrality_errbar(
         fn1='retweet.1108.claim.kcore.raw.csv',
         fn2='centralities.ranked.raw_id.csv'):
+    """The position of main cores located at different centralities."""
     df1 = pd.read_csv(fn1)
     df2 = pd.read_csv(fn2)
     df2['rank_id'] = df2.index.values + 10
@@ -439,16 +442,16 @@ def rank_position_mcore_centrality_errbar(
         rank_id = pd.merge(
             df1, df2, how='inner', left_on='raw_id', right_on=c).rank_id
         means.append(rank_id.mean())
-        errs.append(rank_id.std()/np.sqrt(len(df1)))
+        errs.append(rank_id.std() / np.sqrt(len(df1)))
     fig, ax = plt.subplots(figsize=FIGSIZE)
-    ax.errorbar(means,
-                range(len(means)),
-                xerr=errs,
-                fmt='o',
-                capsize=2,
-                ecolor='red',
-                color=C1
-                )
+    ax.errorbar(
+        means,
+        range(len(means)),
+        xerr=errs,
+        fmt='o',
+        capsize=2,
+        ecolor='red',
+        color=C1)
     ax.set_xlabel('Ranking')
     plt.yticks([0, 1, 2, 3, 4, 5, 6], df2.columns[:-1])
     # ax.set_xscale('symlog')
@@ -466,18 +469,15 @@ def mcore_centrality_overlapping(fn1='retweet.1108.claim.kcore.raw.csv',
     df1 = df1.loc[df1.kcore == df1.kcore.max()]
     s1 = set(df1.raw_id.values)
     x = np.array(range(50, 2001, 50))
-    y =[]
+    y = []
     for top in x:
         s2 = set(df2.iloc[:top].values.flatten())
-        y.append(len(s1 & s2)/len(s1))
+        y.append(len(s1 & s2) / len(s1))
     fig, ax = plt.subplots(figsize=FIGSIZE)
     ax.plot(x, y)
     ax.set_xlabel('Top Ranking')
     ax.set_ylabel('Inclusion')
     plt.tight_layout()
-
-
-
 
 
 def mcore_growing(fn1='kcore.growing.csv',
@@ -512,7 +512,8 @@ def mcore_growing(fn1='kcore.growing.csv',
 
 
 def mcore_growing_inset(fn1='kcore.growing.csv',
-                  fn2='kcore.growing.daily-rewiring.configuration.csv'):
+                        fn2='kcore.growing.daily-rewiring.configuration.csv'):
+    """The main core size and K when growing of network."""
     df1 = pd.read_csv(fn1, parse_dates=['timeline'])
     df2 = pd.read_csv(fn2, parse_dates=['timeline'])
     df1 = df1.set_index('timeline')
@@ -524,35 +525,24 @@ def mcore_growing_inset(fn1='kcore.growing.csv',
     df = pd.merge(df1, df2, left_index=True, right_index=True)
     df = df.rolling('7D').mean()
     fig, ax = plt.subplots(figsize=FIGSIZE)
-    df[['K, actual', 'K, shuffled']].plot(
-        ax=ax,
-        color=[C1, C2]
-    )
+    df[['K, actual', 'K, shuffled']].plot(ax=ax, color=[C1, C2])
     ax.set_xlabel('')
     ax.set_ylabel('K of Main Core')
     plt.tight_layout()
     ax2 = fig.add_axes([0.52, 0.24, 0.42, 0.31])
-    df[['S, actual']].plot(
-        ax=ax2,
-        color=C1,
-        fontsize=9,
-        legend=False,
-        lw=0.8
-    )
+    df[['S, actual']].plot(ax=ax2, color=C1, fontsize=9, legend=False, lw=0.8)
     ax2.set_xlabel('')
-    ax2.tick_params(axis='x', which='both', bottom='off', top='off',
-                    labelbottom='off')
+    ax2.tick_params(
+        axis='x', which='both', bottom='off', top='off', labelbottom='off')
     ax2.set_ylabel('Size', fontsize=9)
     ax2.set_yticks([0, 500, 1000])
     ax2.set_yticklabels(['0.0', '0.5', '1.0'])
-    ax2.text(0.0, 1.01, '$x10^3$',
-             fontsize=9,
-             transform=ax2.transAxes)
+    ax2.text(0.0, 1.01, '$x10^3$', fontsize=9, transform=ax2.transAxes)
     plt.savefig('mcore-growing-inset.pdf')
 
 
 def bot_by_centrality(fn1='ubs_by_ometer.parsed.csv',
-                 fn2='centralities.ranked.raw_id.csv',
+                      fn2='centralities.ranked.raw_id.csv',
                       top=1000):
     df1 = pd.read_csv(fn1)
     df2 = pd.read_csv(fn2)
@@ -564,33 +554,33 @@ def bot_by_centrality(fn1='ubs_by_ometer.parsed.csv',
         vs = bmap.loc[df2[c].values]
         vs = vs.loc[vs.notnull()]
         ms.append(vs.mean())
-        errs.append(vs.std()/np.sqrt(len(vs)))
+        errs.append(vs.std() / np.sqrt(len(vs)))
         print((c, ms[-1], errs[-1]))
     fig, ax = plt.subplots(figsize=FIGSIZE)
     ax.errorbar(
         range(len(ms)),
         ms,
-                yerr=errs,
-                ecolor='red',
-                elinewidth=0.8,
-                capsize=1.5,
-                fmt='o-',
-                markersize=1.2,
-                color=C1,
-                lw=0.8,
-                )
+        yerr=errs,
+        ecolor='red',
+        elinewidth=0.8,
+        capsize=1.5,
+        fmt='o-',
+        markersize=1.2,
+        color=C1,
+        lw=0.8,)
     ax.set_xticks(range(len(ms)))
     ax.set_xticklabels(df2.columns, rotation=90)
     ax.set_ylabel('Bot Score')
     plt.tight_layout()
-    plt.savefig('bot-by-kcore.pdf')
+    plt.savefig('bot-by-centrality.pdf')
+
 
 def bot_by_kcore(fn1='ubs_by_ometer.parsed.csv',
-                 fn2='sampled.raw_id.by.k.csv'):
+                 fn2='sampled.raw_id.by.kcore.csv'):
     df1 = pd.read_csv(fn1)
     df2 = pd.read_csv(fn2)
-    df = pd.merge(df2, df1, how='left', left_on='raw_id',
-                  right_on='user_raw_id')
+    df = pd.merge(
+        df2, df1, how='left', left_on='raw_id', right_on='user_raw_id')
     df = df.loc[df.bot_score_en.notnull()]
     gp = df.groupby('k').bot_score_en
     m = gp.mean()
@@ -601,19 +591,51 @@ def bot_by_kcore(fn1='ubs_by_ometer.parsed.csv',
     #         markersize=4,
     #         alpha=0.5,
     #         )
-    ax.errorbar(m.index.values,
-                m.values,
-                yerr=yerr,
-                ecolor='red',
-                elinewidth=0.8,
-                capsize=1.5,
-                fmt='o-',
-                markersize=1.2,
-                color=C1,
-                lw=0.8,
-                )
+    ax.errorbar(
+        m.index.values,
+        m.values,
+        yerr=yerr,
+        ecolor='red',
+        elinewidth=0.8,
+        capsize=1.5,
+        fmt='o-',
+        markersize=1.2,
+        color=C1,
+        lw=0.8,)
     ax.set_xlabel('K')
     ax.set_ylabel('Bot Score')
     plt.tight_layout()
     plt.savefig('bot-by-kcore.pdf')
 
+
+def bot_by_kshell(fn1='ubs_by_ometer.parsed.csv',
+                  fn2='sampled.raw_id.by.kshell.csv'):
+    df1 = pd.read_csv(fn1)
+    df2 = pd.read_csv(fn2)
+    df = pd.merge(
+        df2, df1, how='left', left_on='raw_id', right_on='user_raw_id')
+    df = df.loc[df.bot_score_en.notnull()]
+    gp = df.groupby('k').bot_score_en
+    m = gp.mean()
+    yerr = gp.std() / np.sqrt(gp.size())
+    fig, ax = plt.subplots(figsize=FIGSIZE)
+    # ax.plot(m.index.values, m.values,
+    #         marker='o',
+    #         markersize=4,
+    #         alpha=0.5,
+    #         )
+    ax.errorbar(
+        m.index.values,
+        m.values,
+        yerr=yerr,
+        ecolor='red',
+        elinewidth=0.8,
+        capsize=1.5,
+        fmt='o-',
+        markersize=1.2,
+        color=C1,
+        lw=0.8,)
+    ax.set_xlabel('K')
+    ax.set_ylabel('Bot Score')
+    plt.tight_layout()
+    plt.savefig('bot-by-shell.pdf')
