@@ -1,5 +1,7 @@
 import logging
 from os.path import join, splitext, basename
+from scipy.stats import kendalltau
+from scipy.stats import spearmanr
 
 import pandas as pd
 import networkx as nx
@@ -27,7 +29,7 @@ def get_absprefix(abspath):
 
 
 def nplog(a, base):
-    return np.log(a)/np.log(base)
+    return np.log(a) / np.log(base)
 
 
 def ccdf(s):
@@ -63,11 +65,9 @@ def decompose_network(fn):
     if 'to_indexed_id' in df.columns:
         df = df.drop('to_indexed_id', axis=1)
     fn_df = df.loc[df.cweight > 0].copy()
-    fn_df = fn_df.drop('fweight', axis=1).rename(
-            columns=dict(cweight='weight'))
+    fn_df = fn_df.drop('fweight', axis=1).rename(columns=dict(cweight='weight'))
     ff_df = df.loc[df.fweight > 0].copy()
-    ff_df = ff_df.drop('cweight', axis=1).rename(
-            columns=dict(fweight='weight'))
+    ff_df = ff_df.drop('cweight', axis=1).rename(columns=dict(fweight='weight'))
     logger.info('Saving fake news network to %r ...', fn_fn)
     fn_df.to_csv(fn_fn, index=False)
     logger.info('Saving fact checking network to %r ...', ff_fn)
@@ -79,7 +79,7 @@ def index_edge_list(ifn, ofn, ikwargs=dict(), okwargs=dict(index=False)):
     s = pd.concat((df[df.columns[0]], df[df.columns[1]]))
     s = s.drop_duplicates()
     s = s.sort_values().reset_index(drop=True)
-    s = {v:k for k, v in s.to_dict().items()}
+    s = {v: k for k, v in s.to_dict().items()}
     df['from_idx'] = df[df.columns[0]].apply(s.get)
     df['to_idx'] = df[df.columns[1]].apply(s.get)
     df = df.sort_values(['from_idx', 'to_idx'])
@@ -160,8 +160,7 @@ def rank_centralities(fn1='centralities.raw.csv',
     ranked_df_v.to_csv('centralities.ranked.values.csv', index=False)
 
 
-def changes_of_cores(fn1='k_core_evolution.csv',
-                     fn2='vertex_map.csv'):
+def changes_of_cores(fn1='k_core_evolution.csv', fn2='vertex_map.csv'):
     """The changes of mcores by intersection daily."""
     df1 = pd.read_csv(fn1, parse_dates=['timeline'])
     df2 = pd.read_csv(fn2, header=None)
@@ -183,9 +182,9 @@ def changes_of_cores(fn1='k_core_evolution.csv',
 
 
 def rank_correlation_bot_centrality(top=1000,
-                        fn1='ubs.csv',
-                        fn2='centralities.ranked.raw_id.csv',
-                        fn3='centralities.ranked.values.csv'):
+                                    fn1='ubs.csv',
+                                    fn2='centralities.ranked.raw_id.csv',
+                                    fn3='centralities.ranked.values.csv'):
     if top > 1000:
         raise ValueError('Top should not larger than 1000!')
     df1 = pd.read_csv(fn1)
@@ -205,14 +204,101 @@ def rank_correlation_bot_centrality(top=1000,
         a2 = df.bot_score.values
         rho, rhop = spearmanr(a1, a2)
         tau, taup = kendalltau(a1, a2)
-        spearmans.append((c, 'spearmanr', rho, rhop))
-        kendalls.append((c, 'kendalltau', tau, taup))
-    df = pd.DataFrame(spearmans)
-    df.to_csv('rank_correlation_bot_centrality.spearman.{}.csv'.format(top),
-              index=False)
-    df = pd.DataFrame(kendalls)
-    df.to_csv('rank_correlation_bot_centrality.kendall.{}.csv'.format(top),
-              index=False)
+        spearmans.append((c, rho, rhop))
+        kendalls.append((c, tau, taup))
+    df = pd.DataFrame(
+        spearmans, columns=['centrality', 'correlation', 'pvalue'])
+    df.to_csv(
+        'rank_correlation_bot_centrality.spearman.{}.csv'.format(top),
+        index=False)
+    df = pd.DataFrame(kendalls, columns=['centrality', 'correlation', 'pvalue'])
+    df.to_csv(
+        'rank_correlation_bot_centrality.kendall.{}.csv'.format(top),
+        index=False)
 
 
+def relative_differece_centralit_mcore(fn1='centralities.ranked.raw_id.csv',
+                                       fn2='retweet.1108.claim.kcore.raw.csv',
+                                       fn3='user_map.csv',
+                                       top=1000):
+    df1 = pd.read_csv(fn1)
+    df2 = pd.read_csv(fn2)
+    user_map = pd.read_csv(fn3)
+    user_map = user_map.set_index('raw_id').screen_name
+    df1 = df1.iloc[:top]
+    s1 = set(set(df1.values.flatten()))
+    s2 = set(df2.loc[df2.kcore == df2.kcore.max()].raw_id.values)
+    rd = s2 - s1
+    logger.info('Number of differece accounts is: %s', len(rd))
+    return user_map.loc[list(rd)].copy()
 
+
+def centrality_corralations(fn='centralities.ranked.values.csv'):
+    df = pd.read_csv(fn)
+    cor = []
+    for x in df.columns:
+        row = []
+        for y in df.columns:
+            rho, _ = spearmanr(df[x].values, df[y].values)
+            row.append(rho)
+        cor.append(row)
+    df = pd.DataFrame(cor, columns=df.columns, index=df.columns)
+    return df
+
+
+def sample_users_by_kcore(
+        fn='retweet.1108.claim.kcore.raw.csv',
+        kstep=5,
+        include_mcore=True,
+        n_each_k=2000,):
+    df = pd.read_csv(fn)
+    mk = df.kcore.max()
+    ks = list(range(1, mk + 1, kstep))
+    if mk not in ks:
+        ks.append(mk)
+    samples = []
+    for k in ks:
+        population = df.loc[df.kcore >= k].raw_id.values
+        if len(population) <= n_each_k:
+            samples.append(population)
+        else:
+            samples.append(
+                np.random.choice(population, size=n_each_k, replace=False))
+
+    def build_df(ks, samples):
+        for k, sample in zip(ks, samples):
+            for v in sample:
+                yield (k, v)
+
+    sdf = pd.DataFrame(build_df(ks, samples), columns=['k', 'raw_id'])
+    sdf.to_csv('sampled.raw_id.by.kcore.csv', index=False)
+    return sdf
+
+
+def sample_users_by_kshell(
+        fn='retweet.1108.claim.kcore.raw.csv',
+        kstep=5,
+        include_mcore=True,
+        n_each_k=2000,):
+    df = pd.read_csv(fn)
+    mk = df.kcore.max()
+    ks = list(range(1, mk + 1, kstep))
+    if mk not in ks:
+        ks.append(mk)
+    samples = []
+    for k in ks:
+        population = df.loc[df.kcore == k].raw_id.values
+        if len(population) <= n_each_k:
+            samples.append(population)
+        else:
+            samples.append(
+                np.random.choice(population, size=n_each_k, replace=False))
+
+    def build_df(ks, samples):
+        for k, sample in zip(ks, samples):
+            for v in sample:
+                yield (k, v)
+
+    sdf = pd.DataFrame(build_df(ks, samples), columns=['k', 'raw_id'])
+    sdf.to_csv('sampled.raw_id.by.kshell.csv', index=False)
+    return sdf
