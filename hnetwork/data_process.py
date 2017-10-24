@@ -6,6 +6,7 @@ from scipy.stats import spearmanr
 import pandas as pd
 import networkx as nx
 import numpy as np
+import multiprocessing as mp
 
 from . import BASE_DIR
 
@@ -302,3 +303,75 @@ def sample_users_by_kshell(
     sdf = pd.DataFrame(build_df(ks, samples), columns=['k', 'raw_id'])
     sdf.to_csv('sampled.raw_id.by.kshell.csv', index=False)
     return sdf
+
+
+def mcore_of_rewired(t, g, model):
+    print('Process id: {}, number of rejected edges: {}'.format(
+        multiprocessing.current_process(),
+        gt.random_rewire(g, model=model))
+    kshell = gt.kcore_decomposition(g)
+    s = pd.Series(kshell.a.copy())
+    k = s.max()
+    n = (s == k).sum()
+    return (t, k, n)
+
+
+def kcore_growing_daily_rewiring(fn, ofn=None, model='configuration', nruns=10):
+    """The growing of kcore by rewiring daily."""
+    if ofn is None:
+        ofn = 'kcore.growing.daily-rewiring.{}.csv'.format(model)
+    # load only necessary columns
+    df = pd.read_csv(fn, parse_dates=['tweet_created_at'], usecols=[2, 3, 4])
+    df = df.set_index('tweet_created_at')
+    # remove self-loop
+    df = df.loc[df.from_raw_id != df.to_raw_id]
+    df['row_id'] = np.arange(len(df))
+    df['gpf'] = False
+    gpf_rows = df.row_id.groupby(pd.Grouper(freq=freq)).last()
+    gpf_rows = gpf_rows.loc[gpf_rows.notnull()].astype('int')
+    df.loc[df.row_id.isin(gpf_rows.values), 'gpf'] = True
+
+    v_map = dict()
+    e_set = set()
+    v_counter = -1
+    g = gt.Graph()
+    ts = []
+    ks = []
+    ns = []
+    mpool = mp.Pool()
+
+    def collect_results(r):
+        t, k, n = r
+        ks.append(k)
+        ns.append(n)
+        ts.append(t)
+
+    for created_at, from_raw_id, to_raw_id, gpf in df[[
+            'from_raw_id', 'to_raw_id', 'gpf'
+    ]].itertuples():
+        e = (from_raw_id, to_raw_id)
+        if e not in e_set:
+            if from_raw_id not in v_map:
+                v_counter += 1
+                v_map[from_raw_id] = v_counter
+            if to_raw_id not in v_map:
+                v_counter += 1
+                v_map[to_raw_id] = v_counter
+            source = v_map.get(from_raw_id)
+            target = v_map.get(to_raw_id)
+            g.add_edge(source, target, add_missing=True)
+            e_set.add(e)
+        if gpf:
+            for i in range(nruns):
+                g1 = g.copy()
+                mpool.apply_async(mcore_of_rewired,
+                                  args=(created_at, g, model),
+                                  call_back=collect_results)
+    mpool.close()
+    mpool.join()
+    cdf = pd.DataFrame(dict(
+        timeline=ts,
+        k=ks,
+        n=ns
+    ))
+    cdf.to_csv(ofn, index=False)
