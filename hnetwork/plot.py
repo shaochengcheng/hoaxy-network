@@ -638,4 +638,24 @@ def bot_by_kshell(fn1='ubs_by_ometer.parsed.csv',
     ax.set_xlabel('K')
     ax.set_ylabel('Bot Score')
     plt.tight_layout()
-    plt.savefig('bot-by-shell.pdf')
+    plt.savefig('bot-by-kshell.pdf')
+
+def changes_of_cores(fn='k_core_evolution.csv',
+                     start='2016-09-01',
+                     end='2017-10-01'):
+    """The changes of mcores by intersection daily."""
+    df = pd.read_csv(fn, parse_dates=['timeline'])
+    df['mcore_idx'] = df.mcore_idx.apply(eval).apply(set)
+    df = df.set_index('timeline')
+    df.index = df.index.values.astype('<M8[D]')
+    unchanged_core_num = []
+    for dt in pd.date_range(start=start, end=end, freq='D'):
+        if dt in df.index:
+            s1 = set(df.loc[dt, 'mcore_idx'])
+            for ts, s2 in df.mcore_idx.loc[(dt + pd.Timedelta('1 day')):].iteritems():
+                s1 &= s2
+            unchanged_core_num.append((dt, len(s1)))
+    rdf = pd.DataFrame(unchanged_core_num, columns=['timeline', 'n'])
+    rdf = rdf.set_index('timeline')
+    rdf.plot()
+
