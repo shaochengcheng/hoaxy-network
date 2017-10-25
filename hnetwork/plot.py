@@ -660,7 +660,7 @@ def changes_of_cores(fn='kcore.growing.csv',
     rdf.plot()
 
 
-def churn_of_mcore(fn='k_core_evolution.csv', freq='W'):
+def churn_of_mcore(fn='kcore.growing.csv', freq='W'):
     df = pd.read_csv(fn, parse_dates=['timeline'])
     df['mcore_idx'] = df.mcore_idx.apply(eval).apply(set)
     df = df.set_index('timeline')
@@ -684,8 +684,11 @@ def churn_of_mcore(fn='k_core_evolution.csv', freq='W'):
         ns.append(len(s0 & s1))
         s0 = s1
     rs = pd.Series(ns, index=ts)
-    rs.name = 'Number of Weekly Unchurned'
+    ms = df.mcore_s.resample(freq).mean()
+    rdf = pd.concat([rs, ms], axis=1)
+    rdf.columns = ['Number of Weekly Unchurned',
+                   'Weekly Mean']
     fig, ax = plt.subplots(figsize=FIGSIZE)
-    rs.plot(ax=ax, legend=False)
+    rdf.plot(ax=ax)
     plt.tight_layout()
     plt.savefig('churn-of-mcore.pdf')
