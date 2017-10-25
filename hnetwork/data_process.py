@@ -343,7 +343,7 @@ def kcore_growing_daily_rewiring(fn, ofn=None,
     ts = []
     ks = []
     ns = []
-    mpool = mp.Pool()
+    mpool = mp.Pool(maxtasksperchild=2)
 
     def collect_results(r):
         t, k, n = r

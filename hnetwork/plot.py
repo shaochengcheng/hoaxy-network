@@ -640,7 +640,7 @@ def bot_by_kshell(fn1='ubs_by_ometer.parsed.csv',
     plt.tight_layout()
     plt.savefig('bot-by-kshell.pdf')
 
-def changes_of_cores(fn='k_core_evolution.csv',
+def changes_of_cores(fn='kcore.growing.csv',
                      start='2016-09-01',
                      end='2017-10-01'):
     """The changes of mcores by intersection daily."""
@@ -659,3 +659,33 @@ def changes_of_cores(fn='k_core_evolution.csv',
     rdf = rdf.set_index('timeline')
     rdf.plot()
 
+
+def churn_of_mcore(fn='k_core_evolution.csv', freq='W'):
+    df = pd.read_csv(fn, parse_dates=['timeline'])
+    df['mcore_idx'] = df.mcore_idx.apply(eval).apply(set)
+    df = df.set_index('timeline')
+
+    def gp_union_func(s):
+        s0 = set()
+        for s1 in s.values.flatten():
+            s0 |= s1
+        return s0
+        # return (s.index[0], s0)
+        # rs = pd.Series(0, index=s.index[0])
+        # rs.iloc[0] = s0
+        # return rs
+
+    udf = df.groupby(pd.Grouper(freq=freq)).mcore_idx.apply(gp_union_func)
+    s0 = udf.iloc[0]
+    ts = []
+    ns = []
+    for t, s1 in udf.iloc[1:].iteritems():
+        ts.append(t)
+        ns.append(len(s0 & s1))
+        s0 = s1
+    rs = pd.Series(ns, index=ts)
+    rs.name = 'Number of Weekly Unchurned'
+    fig, ax = plt.subplots(figsize=FIGSIZE)
+    rs.plot(ax=ax, legend=False)
+    plt.tight_layout()
+    plt.savefig('churn-of-mcore.pdf')
