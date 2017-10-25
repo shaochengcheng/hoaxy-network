@@ -7,6 +7,7 @@ import pandas as pd
 import networkx as nx
 import numpy as np
 import multiprocessing as mp
+import graph_tool.all as gt
 
 from . import BASE_DIR
 
@@ -306,20 +307,24 @@ def sample_users_by_kshell(
 
 
 def mcore_of_rewired(t, g, model):
-    print('Process id: {}, number of rejected edges: {}'.format(
-        multiprocessing.current_process(),
-        gt.random_rewire(g, model=model))
+    pid = mp.current_process(),
+    rejected = gt.random_rewire(g, model=model)
+    print('Process id={}, number of rejected edges={}'.format(pid, rejected))
+    logger.info('PID=%s, number of rejected edges=%s', pid, rejected)
     kshell = gt.kcore_decomposition(g)
     s = pd.Series(kshell.a.copy())
     k = s.max()
     n = (s == k).sum()
+    logger.info('PID=%s, ts=%s, K=%s, N=%s', pid, t, k, n)
     return (t, k, n)
 
 
-def kcore_growing_daily_rewiring(fn, ofn=None, model='configuration', nruns=10):
+def kcore_growing_daily_rewiring(fn, ofn=None,
+                                 model='configuration',
+                                 nruns=100):
     """The growing of kcore by rewiring daily."""
     if ofn is None:
-        ofn = 'kcore.growing.daily-rewiring.{}.csv'.format(model)
+        ofn = 'kcore.growing.daily-rewiring.{}.{}runs.csv'.format(model, nruns)
     # load only necessary columns
     df = pd.read_csv(fn, parse_dates=['tweet_created_at'], usecols=[2, 3, 4])
     df = df.set_index('tweet_created_at')
@@ -327,7 +332,7 @@ def kcore_growing_daily_rewiring(fn, ofn=None, model='configuration', nruns=10):
     df = df.loc[df.from_raw_id != df.to_raw_id]
     df['row_id'] = np.arange(len(df))
     df['gpf'] = False
-    gpf_rows = df.row_id.groupby(pd.Grouper(freq=freq)).last()
+    gpf_rows = df.row_id.groupby(pd.Grouper(freq='D')).last()
     gpf_rows = gpf_rows.loc[gpf_rows.notnull()].astype('int')
     df.loc[df.row_id.isin(gpf_rows.values), 'gpf'] = True
 
@@ -365,8 +370,8 @@ def kcore_growing_daily_rewiring(fn, ofn=None, model='configuration', nruns=10):
             for i in range(nruns):
                 g1 = g.copy()
                 mpool.apply_async(mcore_of_rewired,
-                                  args=(created_at, g, model),
-                                  call_back=collect_results)
+                                  args=(created_at, g1, model),
+                                  callback=collect_results)
     mpool.close()
     mpool.join()
     cdf = pd.DataFrame(dict(
