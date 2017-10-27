@@ -660,7 +660,7 @@ def changes_of_cores(fn='kcore.growing.csv',
     rdf.plot()
 
 
-def churn_of_mcore(fn='kcore.growing.csv', freq='W'):
+def churn_of_mcore(fn='kcore.growing.csv', freq='1M'):
     df = pd.read_csv(fn, parse_dates=['timeline'])
     df['mcore_idx'] = df.mcore_idx.apply(eval).apply(set)
     df = df.set_index('timeline')
@@ -678,17 +678,22 @@ def churn_of_mcore(fn='kcore.growing.csv', freq='W'):
     udf = df.groupby(pd.Grouper(freq=freq)).mcore_idx.apply(gp_union_func)
     s0 = udf.iloc[0]
     ts = []
-    ns = []
+    rs = []
     for t, s1 in udf.iloc[1:].iteritems():
         ts.append(t)
-        ns.append(len(s0 & s1))
+        if len(s0) == 0:
+            rs.append(np.nan)
+        else:
+            rs.append(len(s0 & s1) / len(s0))
         s0 = s1
-    rs = pd.Series(ns, index=ts)
-    ms = df.mcore_s.resample(freq).mean()
-    rdf = pd.concat([rs, ms], axis=1)
-    rdf.columns = ['Number of Weekly Unchurned',
-                   'Weekly Mean']
+    s = pd.Series(rs, index=ts)
+    # ms = df.mcore_s.resample(freq).mean()
+    # rdf = pd.concat([rs, ms], axis=1)
+    # rdf.columns = ['Number of Weekly Unchurned',
+    #                'Weekly Mean']
     fig, ax = plt.subplots(figsize=FIGSIZE)
-    rdf.plot(ax=ax)
+    s.plot(ax=ax)
+    ax.set_xlabel('')
+    ax.set_ylabel('Ratio of Un-churned')
     plt.tight_layout()
     plt.savefig('churn-of-mcore.pdf')
