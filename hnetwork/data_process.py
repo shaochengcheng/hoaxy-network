@@ -4,10 +4,12 @@ from scipy.stats import kendalltau
 from scipy.stats import spearmanr
 
 import pandas as pd
-import networkx as nx
 import numpy as np
 import multiprocessing as mp
-import graph_tool.all as gt
+try:
+    import graph_tool.all as gt
+except ImportError as e:
+    print(e)
 
 from . import BASE_DIR
 
@@ -370,3 +372,27 @@ def kcore_growing_daily_rewiring(fn, ofn=None,
     mpool.join()
     cdf = pd.DataFrame(data, columns=['timeline', 'k', 's'])
     cdf.to_csv(ofn, index=False)
+
+
+def churn_of_julaug(fn1='kcore.growing.csv', fn2='vmap.csv'):
+    df = pd.read_csv(fn1, parse_dates=['timeline'])
+    df = df.set_index('timeline')
+    vmap = pd.read_csv('vmap.csv')
+    vmap = vmap.set_index('vid')
+    df['mcore_idx'] = df.mcore_idx.apply(eval).apply(set)
+    s_vid_jul = set()
+    s_vid_aug = set()
+    for t, idxes in df.mcore_idx.loc['2016-07-01':'2016-07-31'].iteritems():
+        s_vid_jul |= idxes
+    for t, idxes in df.mcore_idx.loc['2016-08-01':'2016-08-31'].iteritems():
+        s_vid_aug |= idxes
+    s_uid_jul = set(vmap.loc[list(s_vid_jul)].raw_id.values)
+    s_uid_aug = set(vmap.loc[list(s_vid_aug)].raw_id.values)
+    # s_sn_jul = set(vmap.loc[list(s_vid_jul)].screen_name.values)
+    # s_sn_aug = set(vmap.loc[list(s_vid_aug)].screen_name.values)
+
+    data = [(7, uid) for uid in list(s_uid_jul)] + [(8, uid)
+                                                    for uid in list(s_uid_aug)]
+    rdf = pd.DataFrame(data, columns=['month', 'raw_id'])
+    rdf.to_csv('mcore.raw_id.julaug.csv', index=False)
+    return rdf

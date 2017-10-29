@@ -434,7 +434,10 @@ def rank_position_mcore_centrality_errbar(
     """The position of main cores located at different centralities."""
     df1 = pd.read_csv(fn1)
     df2 = pd.read_csv(fn2)
-    df2['rank_id'] = df2.index.values + 10
+    df2 = df2[['weighted_in_degree', 'weighted_out_degree',
+               'page_rank', 'betweenness']]
+    df2.columns = ['In Strength', 'Out Strength', 'Page Rank', 'Betweenness']
+    df2['rank_id'] = df2.index.values + 1
     df1 = df1.loc[df1.kcore == df1.kcore.max()]
     means = []
     errs = []
@@ -453,8 +456,9 @@ def rank_position_mcore_centrality_errbar(
         ecolor='red',
         color=C1)
     ax.set_xlabel('Ranking')
-    plt.yticks([0, 1, 2, 3, 4, 5, 6], df2.columns[:-1])
-    # ax.set_xscale('symlog')
+    plt.yticks([0, 1, 2, 3], df2.columns[:-1])
+    plt.xticks([1e4, 2e4, 3e4, 4e4], [1, 2, 3, 4])
+    plt.text(0.89, -0.18, '$x10^4$', transform=ax.transAxes)
     #ax.xaxis.set_major_formatter(
     #    mpl.ticker.FuncFormatter(lambda x, y: r'$10^%d$' % x))
     plt.tight_layout()
@@ -533,7 +537,38 @@ def mcore_growing_inset(fn1='kcore.growing.csv',
     df[['S, actual']].plot(ax=ax2, color=C1, fontsize=9, legend=False, lw=0.8)
     ax2.set_xlabel('')
     ax2.tick_params(
-        axis='x', which='both', bottom='off', top='off', labelbottom='off')
+        axis='x', which='both', bottom='on', top='off', labelbottom='off')
+    ax2.set_ylabel('Size', fontsize=9)
+    ax2.set_yticks([0, 500, 1000])
+    ax2.set_yticklabels(['0.0', '0.5', '1.0'])
+    ax2.text(0.0, 1.01, '$x10^3$', fontsize=9, transform=ax2.transAxes)
+    plt.savefig('mcore-growing-inset.pdf')
+
+
+def mcore_growing_fill_inset(
+    fn1='kcore.growing.csv',
+    fn2='kcore.growing.daily-rewiring.configuration.64runs.csv'):
+    """The main core size and K when growing of network."""
+    df1 = pd.read_csv(fn1, parse_dates=['timeline'])
+    df2 = pd.read_csv(fn2, parse_dates=['timeline'])
+    df1 = df1.set_index('timeline')
+    df1 = df1[['mcore_k', 'mcore_s']]
+    k2_mean = df2.groupby('timeline').k.mean()
+    k2_stde = df2.groupby('timeline').k.std() / np.sqrt(
+        df2.groupby('timeline').size())
+    fig, ax = plt.subplots(figsize=FIGSIZE)
+    df1['mcore_k'].plot(ax=ax, color=C1, legend=False)
+    ax.fill_between(
+        df1.index.to_pydatetime(), (k2_mean-k2_stde).values,
+        (k2_mean+k2_stde).values,  facecolor='red')
+    ax.set_xlabel('')
+    ax.set_ylabel('K of Main Core')
+    plt.tight_layout()
+    ax2 = fig.add_axes([0.52, 0.24, 0.42, 0.31])
+    df1['mcore_s'].plot(ax=ax2, color=C1, fontsize=9, legend=False, lw=0.8)
+    ax2.set_xlabel('')
+    ax2.tick_params(
+        axis='x', which='both', bottom='on', top='off', labelbottom='off')
     ax2.set_ylabel('Size', fontsize=9)
     ax2.set_yticks([0, 500, 1000])
     ax2.set_yticklabels(['0.0', '0.5', '1.0'])
@@ -660,7 +695,7 @@ def changes_of_cores(fn='kcore.growing.csv',
     rdf.plot()
 
 
-def churn_of_mcore(fn='k_core_evolution.csv', freq='W'):
+def churn_of_mcore(fn='kcore.growing.csv', freq='1M'):
     df = pd.read_csv(fn, parse_dates=['timeline'])
     df['mcore_idx'] = df.mcore_idx.apply(eval).apply(set)
     df = df.set_index('timeline')
@@ -678,14 +713,22 @@ def churn_of_mcore(fn='k_core_evolution.csv', freq='W'):
     udf = df.groupby(pd.Grouper(freq=freq)).mcore_idx.apply(gp_union_func)
     s0 = udf.iloc[0]
     ts = []
-    ns = []
+    rs = []
     for t, s1 in udf.iloc[1:].iteritems():
         ts.append(t)
-        ns.append(len(s0 & s1))
+        if len(s0) == 0:
+            rs.append(np.nan)
+        else:
+            rs.append(len(s0 & s1) / len(s0))
         s0 = s1
-    rs = pd.Series(ns, index=ts)
-    rs.name = 'Number of Weekly Unchurned'
+    s = pd.Series(rs, index=ts)
+    # ms = df.mcore_s.resample(freq).mean()
+    # rdf = pd.concat([rs, ms], axis=1)
+    # rdf.columns = ['Number of Weekly Unchurned',
+    #                'Weekly Mean']
     fig, ax = plt.subplots(figsize=FIGSIZE)
-    rs.plot(ax=ax, legend=False)
+    s.plot(ax=ax)
+    ax.set_xlabel('')
+    ax.set_ylabel('Ratio of Un-churned')
     plt.tight_layout()
     plt.savefig('churn-of-mcore.pdf')
