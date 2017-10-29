@@ -369,7 +369,7 @@ def kcore_growing_weighted_shuffle(fn1,
             g.add_edge(source, target, add_missing=True)
             e_set.add(e)
         if g.num_edges() >= enum_list[gp_counter]:
-        is_group = False
+            is_group = False
         if by == 'v':
             try:
                 if g.num_vertices() == vlist[gcounter]:

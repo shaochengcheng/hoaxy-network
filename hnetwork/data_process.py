@@ -306,7 +306,8 @@ def sample_users_by_kshell(
     return sdf
 
 
-def mcore_of_rewired(t, g, model):
+def mcore_of_rewired(args_tuple):
+    t, g, model = args_tuple
     pid = mp.current_process(),
     rejected = gt.random_rewire(g, model=model)
     print('Process id={}, number of rejected edges={}'.format(pid, rejected))
@@ -319,12 +320,7 @@ def mcore_of_rewired(t, g, model):
     return (t, k, n)
 
 
-def kcore_growing_daily_rewiring(fn, ofn=None,
-                                 model='configuration',
-                                 nruns=100):
-    """The growing of kcore by rewiring daily."""
-    if ofn is None:
-        ofn = 'kcore.growing.daily-rewiring.{}.{}runs.csv'.format(model, nruns)
+def daily_graph_copy(fn, nruns=1, model='configuration'):
     # load only necessary columns
     df = pd.read_csv(fn, parse_dates=['tweet_created_at'], usecols=[2, 3, 4])
     df = df.set_index('tweet_created_at')
@@ -335,22 +331,10 @@ def kcore_growing_daily_rewiring(fn, ofn=None,
     gpf_rows = df.row_id.groupby(pd.Grouper(freq='D')).last()
     gpf_rows = gpf_rows.loc[gpf_rows.notnull()].astype('int')
     df.loc[df.row_id.isin(gpf_rows.values), 'gpf'] = True
-
     v_map = dict()
     e_set = set()
     v_counter = -1
     g = gt.Graph()
-    ts = []
-    ks = []
-    ns = []
-    mpool = mp.Pool(maxtasksperchild=2)
-
-    def collect_results(r):
-        t, k, n = r
-        ks.append(k)
-        ns.append(n)
-        ts.append(t)
-
     for created_at, from_raw_id, to_raw_id, gpf in df[[
             'from_raw_id', 'to_raw_id', 'gpf'
     ]].itertuples():
@@ -368,15 +352,21 @@ def kcore_growing_daily_rewiring(fn, ofn=None,
             e_set.add(e)
         if gpf:
             for i in range(nruns):
-                g1 = g.copy()
-                mpool.apply_async(mcore_of_rewired,
-                                  args=(created_at, g1, model),
-                                  callback=collect_results)
+                yield (created_at, g.copy(), model)
+
+
+def kcore_growing_daily_rewiring(fn, ofn=None,
+                                 model='configuration',
+                                 nruns=100):
+    """The growing of kcore by rewiring daily."""
+    if ofn is None:
+        ofn = 'kcore.growing.daily-rewiring.{}.{}runs.csv'.format(model, nruns)
+    mpool = mp.Pool(maxtasksperchild=20)
+    data = list(mpool.imap_unordered(
+        mcore_of_rewired,
+        daily_graph_copy(fn, nruns=nruns, model=model),
+        chunksize=32))
     mpool.close()
     mpool.join()
-    cdf = pd.DataFrame(dict(
-        timeline=ts,
-        k=ks,
-        n=ns
-    ))
+    cdf = pd.DataFrame(data, columns=['timeline', 'k', 's'])
     cdf.to_csv(ofn, index=False)
