@@ -732,3 +732,75 @@ def churn_of_mcore(fn='kcore.growing.csv', freq='1M'):
     ax.set_ylabel('Ratio of Un-churned')
     plt.tight_layout()
     plt.savefig('churn-of-mcore.pdf')
+
+
+def bot_of_churn(fn1='ubs_by_ometer.parsed.csv',
+                 fn2='mcore.raw_id.julaug.csv',
+                 ofn='bots-of-churn.pdf',
+                 nbins=20,
+                 normed=True,
+                 figsize=FIGSIZE):
+    # pdb.set_trace()
+    df1 = pd.read_csv(fn1)
+    df2 = pd.read_csv(fn2)
+
+    bmap = df1.set_index('user_raw_id').bot_score_en
+    jul = df2.loc[df2.month == 7].raw_id.values
+    aug = df2.loc[df2.month == 8].raw_id.values
+    s1 = set(jul) - set(aug)
+    s2 = set(aug)
+    s1 = bmap.loc[list(s1)]
+    s2 = bmap.loc[list(s2)]
+    a1 = s1.loc[s1.notnull()].values
+    a2 = s2.loc[s2.notnull()].values
+    mu1 = np.mean(a1)
+    sigma1 = np.std(a1, ddof=1)
+    mu2 = np.mean(a2)
+    sigma2 = np.std(a2, ddof=1)
+
+    logger.info('Number of Non-nan values: len(churns)=%s, len(aug)=%s',
+                len(a1), len(a2))
+    logger.info('mu1=%s, mu2=%s', mu1, mu2)
+    logger.info('sigma1=%s, sigma2=%s', sigma1, sigma2)
+
+    logger.info('Welch\'s t-test: %s',
+                ttest_ind(a1, a2, equal_var=False, nan_policy='raise'))
+    logger.info('Kolmogorov-Smirnov test: %s', ks_2samp(a1, a2))
+    logger.info('Mann Whitney U test: %s',
+                mannwhitneyu(a1, a2, alternative='two-sided'))
+    fig, ax = plt.subplots(figsize=FIGSIZE)
+    bins = np.linspace(0, 1, nbins + 1)
+    if normed is False:
+        w1 = np.ones_like(a1) / len(a1)
+        w2 = np.ones_like(a2) / len(a2)
+    else:
+        w1 = None
+        w2 = None
+    ax.set_xlim([0, 1])
+    ax.hist(
+        a1,
+        bins,
+        weights=w1,
+        normed=normed,
+        alpha=0.5,
+        label='Jul - Aug (Churns)',
+        color=C1)
+    ax.hist(
+        a2,
+        bins,
+        weights=w2,
+        normed=normed,
+        alpha=0.5,
+        label='Aug',
+        color=C2)
+    plt.legend(loc='upper right', fontsize='small')
+    ax.set_xlabel('Bot Score')
+    if normed is True:
+        ax.set_ylabel('PDF')
+    else:
+        ax.set_ylabel('$proportion$')
+    plt.tight_layout()
+    plt.savefig(ofn)
+
+
+
