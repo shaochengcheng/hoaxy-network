@@ -552,28 +552,42 @@ def mcore_growing_fill_inset(
     df1 = pd.read_csv(fn1, parse_dates=['timeline'])
     df2 = pd.read_csv(fn2, parse_dates=['timeline'])
     df1 = df1.set_index('timeline')
+    df2 = df2.groupby('timeline').k.agg(['mean', 'std', 'size']).rename(
+        columns=dict(mean='k2')
+    )
     df1 = df1[['mcore_k', 'mcore_s']]
-    k2_mean = df2.groupby('timeline').k.mean()
-    k2_stde = df2.groupby('timeline').k.std() / np.sqrt(
-        df2.groupby('timeline').size())
+    df1.columns = ['k1', 's1']
+    # here we use 2 std (95%)
+    df2['k2_stderr'] = df2['std']
+    # df2['k2_stderr'] = df2['std'] / df['size'].apply(np.sqrt)
+    df2 = df2[['k2', 'k2_stderr']]
+    df = pd.merge(df1, df2, left_index=True, right_index=True)
+    df = df.rolling('7D').mean()
+    x = df.index.to_pydatetime()
+    y1 = df.k1.values
+    y2 = df.k2.values
+    y2_stderr = df.k2_stderr.values
     fig, ax = plt.subplots(figsize=FIGSIZE)
-    df1['mcore_k'].plot(ax=ax, color=C1, legend=False)
-    ax.fill_between(
-        df1.index.to_pydatetime(), (k2_mean-k2_stde).values,
-        (k2_mean+k2_stde).values,  facecolor='red')
+    l1, = ax.plot(x, y1, color=C1, label='K, actual', lw=0.5)
+    l2, = ax.plot(x, y2, label='K, shuffled', lw=0.5, color='r')
+    ax.fill_between(x, y2-2*y2_stderr, y2+2*y2_stderr, facecolor=C2, alpha=0.8)
     ax.set_xlabel('')
     ax.set_ylabel('K of Main Core')
+    labels = ax.get_xticklabels()
+    plt.setp(labels, rotation=-30, fontsize=10)
+    plt.legend()
     plt.tight_layout()
-    ax2 = fig.add_axes([0.52, 0.24, 0.42, 0.31])
-    df1['mcore_s'].plot(ax=ax2, color=C1, fontsize=9, legend=False, lw=0.8)
+    ax2 = fig.add_axes([0.50, 0.24, 0.42, 0.31])
+    df['s1'].plot(ax=ax2, color=C1, fontsize=9, legend=False, lw=0.8)
     ax2.set_xlabel('')
     ax2.tick_params(
-        axis='x', which='both', bottom='on', top='off', labelbottom='off')
+        axis='x', which='both', bottom='on', top='off',
+        labelbottom='off', direction='in')
     ax2.set_ylabel('Size', fontsize=9)
     ax2.set_yticks([0, 500, 1000])
     ax2.set_yticklabels(['0.0', '0.5', '1.0'])
     ax2.text(0.0, 1.01, '$x10^3$', fontsize=9, transform=ax2.transAxes)
-    plt.savefig('mcore-growing-inset.pdf')
+    plt.savefig('mcore-growing-inset-2std.pdf')
 
 
 def bot_by_centrality(fn1='ubs_by_ometer.parsed.csv',
